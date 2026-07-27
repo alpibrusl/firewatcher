@@ -13,26 +13,17 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Extract API URLs from the EFFIS statistics app
+      - name: Fetch the weekly statistics endpoints
         run: |
-          base="https://forest-fire.emergency.copernicus.eu"
-          page="$base/apps/effis.statistics/seasonaltrend"
-          curl -sSL -m 30 "$page" -o page.html || true
-          echo "--- page size: $(wc -c < page.html)"
-          echo "--- script/link references:"
-          grep -oE '(src|href)="[^"]+"' page.html | grep -E '\.(js|mjs)' | head -20 || true
-          echo
-          echo "--- API-looking strings in the page itself:"
-          grep -oE '[^"'"'"' ]*(api2\.[^"'"'"' ]*|/statistics/[^"'"'"' ]*|seasonaltrend[^"'"'"' ]*)' page.html | sort -u | head -30 || true
-          echo
-          for s in $(grep -oE 'src="[^"]+\.js[^"]*"' page.html | sed 's/^src="//;s/"$//' | head -8); do
-            case "$s" in
-              http*) u="$s" ;;
-              /*)    u="$base$s" ;;
-              *)     u="$base/apps/effis.statistics/$s" ;;
-            esac
-            echo "================ bundle: $u"
-            curl -sS -m 30 "$u" -o bundle.js || continue
-            grep -oE '["'"'"'][^"'"'"']*(api2|/statistics/|seasonaltrend|/api/)[^"'"'"']*["'"'"']' bundle.js | sort -u | head -60 || true
+          api="https://api2.effis.emergency.copernicus.eu/statistics/v2"
+          for url in \
+            "$api/effis/weekly?country=ESP" \
+            "$api/ta/weekly?country=ESP" ; do
+            echo "================ ${url}"
+            curl -sS -m 30 -H "Origin: https://alpibrusl.github.io" -D - "$url" 2>&1 | head -c 6000 || true
+            echo
+            echo "---- tail of body:"
+            curl -sS -m 30 "$url" 2>/dev/null | tail -c 1500 || true
+            echo
             echo
           done
