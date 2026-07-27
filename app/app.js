@@ -121,84 +121,51 @@ function initToday(ctx) {
     ctx.map.setView([39.9, -3.6], 6);
   });
 
-  fetchSeasonStats(now.getFullYear());
+  fetchSeasonStats();
 }
 
-// Best-effort live season totals from the EFFIS seasonal-trend statistics API
-// (the same service behind forest-fire.emergency.copernicus.eu/apps/effis.statistics).
-// The exact JSON schema is not documented, so parsing is defensive and the
-// card falls back to portal links whenever nothing trustworthy is found.
-async function fetchSeasonStats(year) {
-  const candidates = [
-    `https://api2.effis.emergency.copernicus.eu/api/effis/seasonaltrend/ESP/${year}`,
-    `https://api2.effis.emergency.copernicus.eu/api/effis/seasonaltrend/json/ESP/${year}`,
-    `https://api2.effis.emergency.copernicus.eu/statistics/v2/effis/seasonaltrend?country=ESP&year=${year}`,
-  ];
-  for (const url of candidates) {
-    try {
-      const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (!resp.ok) continue;
-      const stats = extractSeasonStats(await resp.json());
-      if (stats) {
-        renderSeasonStats(stats);
-        return;
-      }
-    } catch (err) {
-      /* try next candidate */
+// Live season totals from the EFFIS weekly statistics API (the service behind
+// forest-fire.emergency.copernicus.eu/apps/effis.statistics). The response is
+// {banfweekly: [{week, mddate: "YYYYMMDD", events, events_avg, area_ha,
+// area_ha_avg, ...} x 52]} where area_ha/events are that week's mapped totals
+// for the current year and *_avg is the 2006-onward climatology for the same
+// week. Year-to-date figures are the sums over weeks that have already ended;
+// entries with a future mddate are placeholders and must be ignored.
+async function fetchSeasonStats() {
+  const url =
+    "https://api2.effis.emergency.copernicus.eu/statistics/v2/effis/weekly?country=ESP";
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const stats = sumWeeklyStats(await resp.json());
+    if (stats) {
+      renderSeasonStats(stats);
+      return;
     }
+  } catch (err) {
+    console.error("EFFIS weekly stats unavailable:", err);
   }
   document.getElementById("today-fallback").hidden = false;
 }
 
-// Pull cumulative burnt area, its long-term average, and fire count out of an
-// unknown JSON shape by matching well-known key names. A series (weekly values)
-// is reduced to its cumulative total. Returns null unless burnt area is found
-// with a plausible magnitude.
-function extractSeasonStats(data) {
-  const found = { ba: null, avg: null, nf: null };
-
-  const seriesTotal = (arr) => {
-    const nums = arr
-      .map((v) => (typeof v === "number" ? v : v && typeof v === "object"
-        ? Number(v.value ?? v.ba ?? v.area ?? v.y ?? NaN) : NaN))
-      .filter((n) => Number.isFinite(n) && n >= 0);
-    if (!nums.length) return null;
-    const monotonic = nums.every((n, i) => i === 0 || n >= nums[i - 1] - 1e-9);
-    return monotonic ? nums[nums.length - 1] : nums.reduce((a, b) => a + b, 0);
-  };
-
-  const classify = (key) => {
-    const k = key.toLowerCase();
-    const isAvg = /avg|average|mean/.test(k);
-    if (/(^|_)(ba|burnt?_?area|area_?ha)($|_)/.test(k) || /burntarea/.test(k)) {
-      return isAvg ? "avg" : "ba";
-    }
-    if (/(^|_)(nf|n_?fires?|number_?of_?fires?|fires?)($|_)/.test(k)) {
-      return isAvg ? null : "nf";
-    }
-    return null;
-  };
-
-  const visit = (node, depth) => {
-    if (!node || typeof node !== "object" || depth > 6) return;
-    for (const [key, value] of Object.entries(node)) {
-      const slot = classify(key);
-      if (slot) {
-        let num = null;
-        if (typeof value === "number") num = value;
-        else if (Array.isArray(value)) num = seriesTotal(value);
-        if (num !== null && found[slot] === null) found[slot] = num;
-      }
-      if (value && typeof value === "object") visit(value, depth + 1);
-    }
-  };
-  visit(data, 0);
-
-  // Plausibility: annual burnt area for Spain sits between 10^2 and 10^7 ha.
-  if (found.ba === null || found.ba < 100 || found.ba > 1e7) return null;
-  if (found.nf !== null && (found.nf < 0 || found.nf > 1e5)) found.nf = null;
-  if (found.avg !== null && (found.avg < 100 || found.avg > 1e7)) found.avg = null;
-  return found;
+function sumWeeklyStats(data) {
+  const weeks = data && data.banfweekly;
+  if (!Array.isArray(weeks) || !weeks.length) return null;
+  const todayKey = isoDate(new Date()).replaceAll("-", "");
+  let ba = 0;
+  let avg = 0;
+  let nf = 0;
+  let counted = 0;
+  for (const w of weeks) {
+    if (typeof w.mddate !== "string" || w.mddate > todayKey) continue;
+    ba += Number(w.area_ha) || 0;
+    avg += Number(w.area_ha_avg) || 0;
+    nf += Number(w.events) || 0;
+    counted++;
+  }
+  // Plausibility: some completed weeks, and totals within physical bounds.
+  if (!counted || ba < 0 || ba > 1e7 || avg <= 0 || avg > 1e7) return null;
+  return { ba, avg, nf };
 }
 
 function renderSeasonStats({ ba, avg, nf }) {
