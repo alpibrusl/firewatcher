@@ -26,6 +26,43 @@
     <abbr title="European Forest Fire Information System">EFFIS</abbr> services —
     the public face of the <a href="design/">Firewatcher platform design</a>.</p>
 
+    <section class="today" aria-label="Today at a glance">
+      <div class="today-head">
+        <h2>Today at a glance</h2>
+        <span id="today-date" class="today-date"></span>
+      </div>
+      <div id="today-stats" class="today-stats" hidden>
+        <div class="tile tile-sm">
+          <span class="tile-value" id="ts-ba">–</span>
+          <span class="tile-label">ha burnt in Spain in <span class="ts-year"></span> so far (EFFIS-mapped)</span>
+        </div>
+        <div class="tile tile-sm">
+          <span class="tile-value" id="ts-avg">–</span>
+          <span class="tile-label">average at this point of the year, 2006–2025</span>
+        </div>
+        <div class="tile tile-sm">
+          <span class="tile-value" id="ts-nf">–</span>
+          <span class="tile-label">fires ≥ ~30 ha mapped in <span class="ts-year"></span></span>
+        </div>
+      </div>
+      <p id="today-fallback" class="control-note" hidden>Live season totals are
+      unavailable right now — see the
+      <a href="https://forest-fire.emergency.copernicus.eu/apps/effis.statistics/seasonaltrend">EFFIS
+      statistics portal</a> or the
+      <a href="https://forest-fire.emergency.copernicus.eu/apps/effis.csv/">current
+      situation viewer</a> for the official live figures.</p>
+      <div class="today-actions">
+        <button id="btn-today" class="btn" type="button">Reset map to today</button>
+        <a class="btn btn-ghost"
+           href="https://forest-fire.emergency.copernicus.eu/apps/effis.csv/">EFFIS
+           situation viewer ↗</a>
+      </div>
+      <p class="control-note">The map already shows today by default: FWI
+      forecast for the current date, satellite fire detections and this
+      season's burnt areas. Red/dark FWI classes plus active detections in the
+      same area are the signal to read first.</p>
+    </section>
+
     <section class="controls" aria-label="Map layers">
       <h2>Map layers</h2>
 

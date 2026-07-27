@@ -90,6 +90,123 @@ dateInput.addEventListener("change", () => {
   if (!dateInput.value) return;
   fwiLayer.setParams({ time: dateInput.value });
 });
+
+return { map, fwiLayer, hotspotLayer, burntLayer, dateInput };
+}
+
+/* ---------- today at a glance ---------- */
+
+function initToday(ctx) {
+  const now = new Date();
+  document.getElementById("today-date").textContent = now.toLocaleDateString(
+    "en-GB",
+    { weekday: "long", day: "numeric", month: "long", year: "numeric" }
+  );
+  for (const el of document.querySelectorAll(".ts-year")) {
+    el.textContent = String(now.getFullYear());
+  }
+
+  document.getElementById("btn-today").addEventListener("click", () => {
+    if (!ctx) return;
+    for (const [id, layer] of [
+      ["lyr-fwi", ctx.fwiLayer],
+      ["lyr-hs", ctx.hotspotLayer],
+      ["lyr-ba", ctx.burntLayer],
+    ]) {
+      document.getElementById(id).checked = true;
+      layer.addTo(ctx.map);
+    }
+    ctx.dateInput.value = isoDate(new Date());
+    ctx.fwiLayer.setParams({ time: ctx.dateInput.value });
+    ctx.map.setView([39.9, -3.6], 6);
+  });
+
+  fetchSeasonStats(now.getFullYear());
+}
+
+// Best-effort live season totals from the EFFIS seasonal-trend statistics API
+// (the same service behind forest-fire.emergency.copernicus.eu/apps/effis.statistics).
+// The exact JSON schema is not documented, so parsing is defensive and the
+// card falls back to portal links whenever nothing trustworthy is found.
+async function fetchSeasonStats(year) {
+  const candidates = [
+    `https://api2.effis.emergency.copernicus.eu/api/effis/seasonaltrend/ESP/${year}`,
+    `https://api2.effis.emergency.copernicus.eu/api/effis/seasonaltrend/json/ESP/${year}`,
+    `https://api2.effis.emergency.copernicus.eu/statistics/v2/effis/seasonaltrend?country=ESP&year=${year}`,
+  ];
+  for (const url of candidates) {
+    try {
+      const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!resp.ok) continue;
+      const stats = extractSeasonStats(await resp.json());
+      if (stats) {
+        renderSeasonStats(stats);
+        return;
+      }
+    } catch (err) {
+      /* try next candidate */
+    }
+  }
+  document.getElementById("today-fallback").hidden = false;
+}
+
+// Pull cumulative burnt area, its long-term average, and fire count out of an
+// unknown JSON shape by matching well-known key names. A series (weekly values)
+// is reduced to its cumulative total. Returns null unless burnt area is found
+// with a plausible magnitude.
+function extractSeasonStats(data) {
+  const found = { ba: null, avg: null, nf: null };
+
+  const seriesTotal = (arr) => {
+    const nums = arr
+      .map((v) => (typeof v === "number" ? v : v && typeof v === "object"
+        ? Number(v.value ?? v.ba ?? v.area ?? v.y ?? NaN) : NaN))
+      .filter((n) => Number.isFinite(n) && n >= 0);
+    if (!nums.length) return null;
+    const monotonic = nums.every((n, i) => i === 0 || n >= nums[i - 1] - 1e-9);
+    return monotonic ? nums[nums.length - 1] : nums.reduce((a, b) => a + b, 0);
+  };
+
+  const classify = (key) => {
+    const k = key.toLowerCase();
+    const isAvg = /avg|average|mean/.test(k);
+    if (/(^|_)(ba|burnt?_?area|area_?ha)($|_)/.test(k) || /burntarea/.test(k)) {
+      return isAvg ? "avg" : "ba";
+    }
+    if (/(^|_)(nf|n_?fires?|number_?of_?fires?|fires?)($|_)/.test(k)) {
+      return isAvg ? null : "nf";
+    }
+    return null;
+  };
+
+  const visit = (node, depth) => {
+    if (!node || typeof node !== "object" || depth > 6) return;
+    for (const [key, value] of Object.entries(node)) {
+      const slot = classify(key);
+      if (slot) {
+        let num = null;
+        if (typeof value === "number") num = value;
+        else if (Array.isArray(value)) num = seriesTotal(value);
+        if (num !== null && found[slot] === null) found[slot] = num;
+      }
+      if (value && typeof value === "object") visit(value, depth + 1);
+    }
+  };
+  visit(data, 0);
+
+  // Plausibility: annual burnt area for Spain sits between 10^2 and 10^7 ha.
+  if (found.ba === null || found.ba < 100 || found.ba > 1e7) return null;
+  if (found.nf !== null && (found.nf < 0 || found.nf > 1e5)) found.nf = null;
+  if (found.avg !== null && (found.avg < 100 || found.avg > 1e7)) found.avg = null;
+  return found;
+}
+
+function renderSeasonStats({ ba, avg, nf }) {
+  const fmt = (n) => Math.round(n).toLocaleString("en");
+  document.getElementById("ts-ba").textContent = fmt(ba);
+  document.getElementById("ts-avg").textContent = avg === null ? "n/a" : fmt(avg);
+  document.getElementById("ts-nf").textContent = nf === null ? "n/a" : fmt(nf);
+  document.getElementById("today-stats").hidden = false;
 }
 
 /* ---------- historical chart ---------- */
@@ -233,8 +350,10 @@ function renderChart() {
 
 renderChart();
 
+let mapCtx = null;
 try {
-  initMap();
+  mapCtx = initMap();
 } catch (err) {
   console.error("map failed to initialise:", err);
 }
+initToday(mapCtx);
