@@ -13,7 +13,7 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: FWI 256 vs 512 render times, cold and warm
+      - name: Detection layers 256 vs 512, cold renders on fresh bboxes
         run: |
           getmap () {
             name="$1"; layers="$2"; size="$3"; bbox="$4"
@@ -21,24 +21,16 @@ jobs:
             out=$(curl -sS -m 90 -o "${name}.png" -w "%{http_code} %{time_total}s %{size_download}B %{content_type}" "$url" || echo "curl-error")
             echo "${name}: ${out}"
           }
-          # Distinct bboxes to avoid server-side cache flattering the numbers
-          NW="-1252344.27,4383204.95,-626172.13,5009377.09"
-          NE="-626172.13,4383204.95,0,5009377.09"
-          SW="-1252344.27,4383204.95,-626172.13,4383204.95"
-          S1="-626172.13,4383204.95,0,4383204.95"
-          # note: two of those are degenerate; use proper southern tiles
-          S2="-1252344.27,4696291.02,-939258.20,5009377.09"
-          S3="-939258.20,4383204.95,-626172.13,4696291.02"
-          echo "==== FWI cold renders"
-          getmap fwi256-a "mf010.fwi" 256 "$NW"
-          getmap fwi256-b "mf010.fwi" 256 "$NE"
-          getmap fwi512-a "mf010.fwi" 512 "$NW"
-          getmap fwi512-b "mf010.fwi" 512 "$NE"
-          getmap fwi512-c "mf010.fwi" 512 "$S2"
-          getmap fwi256-c "mf010.fwi" 256 "$S3"
-          echo "==== warm repeats (same bbox again)"
-          getmap fwi512-a2 "mf010.fwi" 512 "$NW"
-          getmap fwi256-a2 "mf010.fwi" 256 "$NW"
-          echo "==== detection layer warm sanity"
-          getmap combo-a "modis.ba.season,all.hs" 512 "$NW"
-          getmap combo-a2 "modis.ba.season,all.hs" 512 "$NW"
+          # Fresh bboxes never requested by earlier rounds (E and SE Spain)
+          E1="0,4383204.95,313086.07,4696291.02"
+          E2="-313086.07,4539747.98,0,4852834.06"
+          SE1="-313086.07,4383204.95,0,4539747.98"
+          SE2="-469629.10,4470876.47,-313086.07,4627419.50"
+          echo "==== combined detection cold, 512 vs 256"
+          getmap combo512-e1 "modis.ba.season,all.hs" 512 "$E1"
+          getmap combo256-e2 "modis.ba.season,all.hs" 256 "$E2"
+          getmap combo512-se1 "modis.ba.season,all.hs" 512 "$SE1"
+          getmap combo256-se2 "modis.ba.season,all.hs" 256 "$SE2"
+          echo "==== warm repeats"
+          getmap combo512-e1b "modis.ba.season,all.hs" 512 "$E1"
+          getmap combo256-e2b "modis.ba.season,all.hs" 256 "$E2"

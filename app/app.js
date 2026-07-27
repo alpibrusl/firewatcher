@@ -37,10 +37,12 @@ const basemap = L.tileLayer(basemapUrl(darkMode.matches), {
 darkMode.addEventListener("change", (e) => basemap.setUrl(basemapUrl(e.matches)));
 
 // The EFFIS WMS renders every tile on demand (no CDN cache), so each request
-// costs real server time. Fetch 512px tiles (4x fewer requests per view),
-// wait for the zoom/pan to settle before requesting (updateWhenIdle /
-// updateWhenZooming), and keep a generous buffer of stale tiles on screen so
-// the map never blanks out while replacements render.
+// costs real server time. Wait for the zoom/pan to settle before requesting
+// (updateWhenIdle / updateWhenZooming) and keep a generous buffer of stale
+// tiles on screen so the map never blanks out while replacements render.
+// Tile size is per layer: measured render times differ wildly (the FWI
+// raster takes 10-30s at 512px vs under 3s at 256px, while the vector-drawn
+// detection layers are cheap at 512px).
 function effisLayer(layerName, extra = {}) {
   return L.tileLayer.wms(EFFIS_WMS, {
     layers: layerName,
@@ -48,7 +50,6 @@ function effisLayer(layerName, extra = {}) {
     transparent: true,
     version: "1.1.1",
     attribution: "&copy; European Union, Copernicus EMS &mdash; EFFIS",
-    tileSize: 512,
     updateWhenIdle: true,
     updateWhenZooming: false,
     keepBuffer: 6,
@@ -68,10 +69,12 @@ const fwiLayer = effisLayer("mf010.fwi", { opacity: 0.55, maxNativeZoom: 8 });
 
 // Hotspots and burnt areas share one combined WMS request per tile (WMS
 // composites comma-separated layers server-side, burnt areas drawn under
-// hotspots), halving EFFIS round-trips per view.
+// hotspots) at 512px — a quarter of the tiles, halved again by combining.
 const DETECTION_LAYERS = { ba: "modis.ba.season", hs: "all.hs" };
 const detectionState = { ba: true, hs: true };
-const detectionLayer = effisLayer(`${DETECTION_LAYERS.ba},${DETECTION_LAYERS.hs}`);
+const detectionLayer = effisLayer(`${DETECTION_LAYERS.ba},${DETECTION_LAYERS.hs}`, {
+  tileSize: 512,
+});
 
 function syncDetectionLayer() {
   const layers = ["ba", "hs"]
