@@ -287,6 +287,24 @@ a:hover { text-decoration: underline; }
 
 .legend-note { display: block; font-size: 0.7rem; color: var(--ink-muted); margin-top: 0.2rem; }
 
+/* Region card */
+
+.region-select {
+  width: 100%;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.region-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.region-card .chart { margin-top: 0.3rem; }
+
 /* Chart */
 
 .chart svg { display: block; width: 100%; height: auto; }
