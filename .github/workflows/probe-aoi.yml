@@ -1,0 +1,46 @@
+name: Probe EFFIS AOI statistics
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/probe-aoi.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find AOI usage in the statistics app bundles
+        run: |
+          base="https://forest-fire.emergency.copernicus.eu"
+          curl -sSL -m 30 "$base/apps/effis.statistics/seasonaltrend" -o page.html || true
+          for s in $(grep -oE 'src="[^"]+\.js[^"]*"' page.html | sed 's/^src="//;s/"$//'); do
+            case "$s" in http*) u="$s" ;; /*) u="$base$s" ;; *) u="$base/apps/effis.statistics/$s" ;; esac
+            curl -sS -m 30 "$u" -o bundle.js || continue
+            echo "=== $u"
+            grep -oE '.{60}aoi.{60}' bundle.js | head -30 || true
+            echo "--- nuts mentions:"
+            grep -oiE '.{40}nuts.{40}' bundle.js | head -15 || true
+            echo
+          done
+
+      - name: Test candidate AOI endpoints
+        run: |
+          api="https://api2.effis.emergency.copernicus.eu/statistics/v2"
+          try () {
+            echo "================ $1"
+            curl -sS -m 20 "$1" -o out.json 2>/dev/null || { echo "curl error"; return; }
+            echo "size=$(wc -c < out.json)"
+            head -c 900 out.json; echo
+          }
+          try "$api/effis/weeklyaoi?aoi=ES61"
+          try "$api/effis/weeklyaoi?aoi=ES30"
+          try "$api/effis/weeklyaoi?aoi=ES6"
+          try "$api/effis/weeklyaoi?aoi=Andalucia"
+          try "$api/aoi?country=ESP"
+          try "$api/aoi/list?country=ESP"
+          try "$api/aoilist?country=ESP"
+          try "$api/effis/aoi?country=ESP"
