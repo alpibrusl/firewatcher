@@ -46,12 +46,14 @@ function effisLayer(layerName, extra = {}) {
   });
 }
 
-const fwiLayer = effisLayer("ecmwf007.fwi", {
-  opacity: 0.55,
-  time: isoDate(today),
-});
-const hotspotLayer = effisLayer("viirs.hs", { time: isoDate(today) });
-const burntLayer = effisLayer("modis.ba", { time: isoDate(today) });
+// Layer names verified against the EFFIS WMS GetCapabilities (July 2026):
+// fire danger is served as mf010.*, hotspots as all.hs/viirs.hs/modis.hs/
+// noaa.hs, burnt areas as modis.ba.* aggregates. The hotspot and burnt-area
+// layers render EMPTY tiles when a TIME parameter is sent — they must be
+// requested without TIME and then show the current detections / season.
+const fwiLayer = effisLayer("mf010.fwi", { opacity: 0.55 });
+const hotspotLayer = effisLayer("all.hs");
+const burntLayer = effisLayer("modis.ba.season");
 
 fwiLayer.addTo(map);
 hotspotLayer.addTo(map);
@@ -88,10 +90,21 @@ const dateInput = document.getElementById("fwi-date");
 }
 dateInput.addEventListener("change", () => {
   if (!dateInput.value) return;
-  fwiLayer.setParams({ time: dateInput.value });
+  setFwiDate(fwiLayer, dateInput.value);
 });
 
 return { map, fwiLayer, hotspotLayer, burntLayer, dateInput };
+}
+
+// The mf010.fwi layer defaults to the current forecast when TIME is absent;
+// send TIME only for an explicitly chosen non-today date.
+function setFwiDate(layer, dateStr) {
+  if (dateStr === isoDate(new Date())) {
+    delete layer.wmsParams.time;
+    layer.setParams({});
+  } else {
+    layer.setParams({ time: dateStr });
+  }
 }
 
 /* ---------- today at a glance ---------- */
@@ -117,7 +130,7 @@ function initToday(ctx) {
       layer.addTo(ctx.map);
     }
     ctx.dateInput.value = isoDate(new Date());
-    ctx.fwiLayer.setParams({ time: ctx.dateInput.value });
+    setFwiDate(ctx.fwiLayer, ctx.dateInput.value);
     ctx.map.setView([39.9, -3.6], 6);
   });
 
