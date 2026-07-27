@@ -9,10 +9,11 @@ function initMap() {
 const map = L.map("map", {
   center: [39.9, -3.6],
   zoom: 6,
-  minZoom: 5,
+  minZoom: 4,
   maxZoom: 12,
-  zoomControl: true,
+  zoomControl: false,
 });
+L.control.zoom({ position: "bottomleft" }).addTo(map);
 
 const darkMode = window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -117,6 +118,24 @@ function initToday(ctx) {
   );
   for (const el of document.querySelectorAll(".ts-year")) {
     el.textContent = String(now.getFullYear());
+  }
+
+  const panel = document.getElementById("panel");
+  const toggle = document.getElementById("panel-toggle");
+  toggle.addEventListener("click", () => {
+    const hidden = panel.classList.toggle("hidden");
+    toggle.classList.toggle("panel-hidden-state", hidden);
+    toggle.setAttribute("aria-expanded", String(!hidden));
+    toggle.textContent = hidden ? "☰" : "✕";
+    toggle.title = hidden ? "Show panel" : "Hide panel";
+  });
+
+  for (const chip of document.querySelectorAll(".chip[data-view]")) {
+    chip.addEventListener("click", () => {
+      if (!ctx) return;
+      const [lat, lon, zoom] = chip.dataset.view.split(",").map(Number);
+      ctx.map.setView([lat, lon], zoom);
+    });
   }
 
   document.getElementById("btn-today").addEventListener("click", () => {

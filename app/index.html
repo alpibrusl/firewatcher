@@ -10,145 +10,136 @@
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<header class="topbar">
-  <span class="brand"><span class="flame">🔥</span> Firewatcher</span>
-  <span class="subtitle">Spain wildfire risk dashboard</span>
+
+<div id="map" role="application" aria-label="Map with live wildfire layers"></div>
+
+<header class="brand">
+  <span class="flame">🔥</span>
+  <span class="brand-name">Firewatcher</span>
+  <span class="brand-sub">Spain wildfire dashboard</span>
   <nav>
-    <a href="design/">Design document</a>
+    <a href="design/">Design doc</a>
     <a href="https://github.com/alpibrusl/firewatcher">GitHub</a>
   </nav>
 </header>
 
-<div class="app">
-  <aside class="panel">
-    <p class="intro">Live fire danger, active fire detections and burnt-area
-    perimeters for Spain, streamed from the Copernicus
-    <abbr title="European Forest Fire Information System">EFFIS</abbr> services —
-    the public face of the <a href="design/">Firewatcher platform design</a>.</p>
+<button id="panel-toggle" class="panel-toggle" aria-expanded="true"
+        aria-controls="panel" title="Hide panel">✕</button>
 
-    <section class="today" aria-label="Today at a glance">
-      <div class="today-head">
-        <h2>Today at a glance</h2>
-        <span id="today-date" class="today-date"></span>
-      </div>
-      <div id="today-stats" class="today-stats" hidden>
-        <div class="tile tile-sm">
-          <span class="tile-value" id="ts-ba">–</span>
-          <span class="tile-label">ha burnt in Spain in <span class="ts-year"></span> so far (EFFIS-mapped)</span>
-        </div>
-        <div class="tile tile-sm">
-          <span class="tile-value" id="ts-avg">–</span>
-          <span class="tile-label">average at this point of the year, 2006–2025</span>
-        </div>
-        <div class="tile tile-sm">
-          <span class="tile-value" id="ts-nf">–</span>
-          <span class="tile-label">fires ≥ ~30 ha mapped in <span class="ts-year"></span></span>
-        </div>
-      </div>
-      <p id="today-fallback" class="control-note" hidden>Live season totals are
-      unavailable right now — see the
-      <a href="https://forest-fire.emergency.copernicus.eu/apps/effis.statistics/seasonaltrend">EFFIS
-      statistics portal</a> or the
-      <a href="https://forest-fire.emergency.copernicus.eu/apps/effis.csv/">current
-      situation viewer</a> for the official live figures.</p>
-      <div class="today-actions">
-        <button id="btn-today" class="btn" type="button">Reset map to today</button>
-        <a class="btn btn-ghost"
-           href="https://forest-fire.emergency.copernicus.eu/apps/effis.csv/">EFFIS
-           situation viewer ↗</a>
-      </div>
-      <p class="control-note">The map already shows today by default: FWI
-      forecast for the current date, satellite fire detections and this
-      season's burnt areas. Red/dark FWI classes plus active detections in the
-      same area are the signal to read first.</p>
-    </section>
+<aside id="panel" class="panel">
 
-    <section class="controls" aria-label="Map layers">
-      <h2>Map layers</h2>
+  <section class="card today" aria-label="Today at a glance">
+    <div class="card-head">
+      <h2>Today at a glance</h2>
+      <span id="today-date" class="muted"></span>
+    </div>
+    <div id="today-stats" class="today-stats" hidden>
+      <div class="stat">
+        <span class="stat-value" id="ts-ba">–</span>
+        <span class="stat-label">ha burnt in <span class="ts-year"></span> (EFFIS-mapped)</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="ts-avg">–</span>
+        <span class="stat-label">avg. at this point of year, 2006–25</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="ts-nf">–</span>
+        <span class="stat-label">fires ≥ ~30 ha mapped in <span class="ts-year"></span></span>
+      </div>
+    </div>
+    <p id="today-fallback" class="note" hidden>Live season totals unavailable —
+    see the <a href="https://forest-fire.emergency.copernicus.eu/apps/effis.statistics/seasonaltrend">EFFIS
+    statistics portal</a> or <a href="https://forest-fire.emergency.copernicus.eu/apps/effis.csv/">situation
+    viewer</a>.</p>
+    <div class="chip-row" role="group" aria-label="Quick views">
+      <button class="chip" data-view="39.9,-3.6,6">Spain</button>
+      <button class="chip" data-view="28.3,-15.7,7">Canarias</button>
+      <button class="chip" data-view="36.8,-4.5,5">Iberia &amp; Maghreb</button>
+      <button id="btn-today" class="chip chip-accent">↺ Reset to today</button>
+    </div>
+  </section>
 
-      <div class="layer-row">
-        <label><input type="checkbox" id="lyr-fwi" checked> Fire danger forecast (FWI)</label>
-        <input type="range" id="fwi-opacity" min="10" max="100" value="55"
-               aria-label="Fire danger layer opacity">
-      </div>
-      <div class="layer-sub">
-        <label for="fwi-date">Forecast date</label>
-        <input type="date" id="fwi-date">
-      </div>
-      <div class="legend" aria-label="Fire danger classes (FWI thresholds per EFFIS)">
-        <span class="legend-title">Danger classes — FWI thresholds (EFFIS)</span>
-        <div class="legend-row"><i style="background:#5faf4e"></i> Very low &lt; 5.2</div>
-        <div class="legend-row"><i style="background:#d9e14f"></i> Low 5.2–11.2</div>
-        <div class="legend-row"><i style="background:#efb138"></i> Moderate 11.2–21.3</div>
-        <div class="legend-row"><i style="background:#e2601f"></i> High 21.3–38.0</div>
-        <div class="legend-row"><i style="background:#b81e1e"></i> Very high 38.0–50.0</div>
-        <div class="legend-row"><i style="background:#571212"></i> Extreme ≥ 50.0</div>
-        <span class="legend-note">Swatches approximate the EFFIS map legend.</span>
-      </div>
+  <section class="card layers" aria-label="Map layers">
+    <div class="card-head"><h2>Live layers</h2><span class="muted">Copernicus EFFIS</span></div>
 
-      <div class="layer-row">
-        <label><input type="checkbox" id="lyr-hs" checked> Active fire detections (VIIRS/MODIS/NOAA)</label>
+    <div class="layer">
+      <label class="switch">
+        <input type="checkbox" id="lyr-fwi" checked>
+        <span class="track" aria-hidden="true"></span>
+        <span class="layer-name">Fire danger forecast <small>FWI</small></span>
+      </label>
+      <input type="range" id="fwi-opacity" min="10" max="100" value="55"
+             aria-label="Fire danger layer opacity">
+    </div>
+    <div class="layer-extra">
+      <label for="fwi-date">Date</label>
+      <input type="date" id="fwi-date">
+    </div>
+    <div class="legend">
+      <div class="legend-bar" aria-hidden="true"></div>
+      <div class="legend-ticks" aria-hidden="true">
+        <span>0</span><span>5.2</span><span>11.2</span><span>21.3</span><span>38</span><span>50+</span>
       </div>
-      <div class="layer-row">
-        <label><input type="checkbox" id="lyr-ba" checked> Burnt areas, current season (EFFIS)</label>
-      </div>
-      <p class="control-note">Layers are rendered live by the EFFIS WMS. Detections
-      and perimeters have a ~30 ha mapping floor and can lag reality; this is an
-      analytical view, not an emergency service.</p>
-    </section>
+      <span class="legend-note">Very low → extreme · FWI classes per EFFIS</span>
+    </div>
 
-    <section class="stats" aria-label="Headline statistics">
-      <div class="tile">
-        <span class="tile-value">8.18M ha</span>
-        <span class="tile-label">burned in Spain 1968–2023</span>
-      </div>
-      <div class="tile">
-        <span class="tile-value">641,751</span>
-        <span class="tile-label">recorded fires 1968–2023</span>
-      </div>
-    </section>
+    <div class="layer">
+      <label class="switch">
+        <input type="checkbox" id="lyr-hs" checked>
+        <span class="track" aria-hidden="true"></span>
+        <span class="layer-name">Active fire detections <small>VIIRS · MODIS · NOAA</small></span>
+      </label>
+    </div>
 
-    <section class="chart-card" aria-label="Annual burned area in Spain">
-      <h2>Burned area per year — Spain</h2>
-      <p class="chart-sub">Thousand hectares, 2005–2025. Approximate totals from
-      the national statistic (EGIF/MITECO); 2025 provisional per EFFIS mapping.</p>
-      <div id="chart" class="chart"></div>
-      <details class="chart-table">
-        <summary>View as table</summary>
-        <table id="chart-table-el">
-          <thead><tr><th scope="col">Year</th><th scope="col">Burned area (ha, approx.)</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </details>
-    </section>
+    <div class="layer">
+      <label class="switch">
+        <input type="checkbox" id="lyr-ba" checked>
+        <span class="track" aria-hidden="true"></span>
+        <span class="layer-name">Burnt areas <small>current season</small></span>
+      </label>
+    </div>
 
-    <section class="about" aria-label="About the platform">
-      <h2>The platform behind this page</h2>
-      <p>Firewatcher is a design for an open-data wildfire analytics platform for
-      Spain. Its six products:</p>
-      <ul class="products">
-        <li><b>P1</b> Harmonised fire record, 1968–present (EGIF ⇄ EFFIS)</li>
-        <li><b>P2</b> Daily fire-danger reanalysis, 1 km, 1980–present</li>
-        <li><b>P3</b> 25 m fuel &amp; structure layer from PNOA-LiDAR + MFE</li>
-        <li><b>P4</b> Calibrated daily ignition-hazard model</li>
-        <li><b>P5</b> Monte Carlo burn probability &amp; exposure</li>
-        <li><b>P6</b> Fuel-treatment placement optimiser</li>
-      </ul>
-      <p><a href="design/">Read the full design document →</a></p>
-    </section>
+    <p class="note">Layers cover the EFFIS domain — Europe, Middle East and
+    North Africa; pan freely. Detections/perimeters have a ~30 ha mapping
+    floor and can lag. Analytical view, not an emergency service.</p>
+  </section>
 
-    <footer class="attribution">
-      <p>Fire danger, detections and burnt areas: © European Union,
-      Copernicus Emergency Management Service — EFFIS. Contains modified
-      Copernicus Emergency Management Service information 2026.</p>
-      <p>Historical statistics: MITECO / EGIF (approximate). Basemap:
-      © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>
+  <section class="card chart-card" aria-label="Annual burned area in Spain">
+    <div class="card-head"><h2>Burned area per year</h2><span class="muted">Spain · kha</span></div>
+    <p class="note tight">Approx. totals per EGIF/MITECO; 2025 provisional (EFFIS).</p>
+    <div id="chart" class="chart"></div>
+    <details class="chart-table">
+      <summary>View as table</summary>
+      <table id="chart-table-el">
+        <thead><tr><th scope="col">Year</th><th scope="col">Burned area (ha, approx.)</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </details>
+  </section>
+
+  <details class="card about">
+    <summary><h2>About Firewatcher</h2></summary>
+    <p>The public face of an open-data wildfire analytics platform design for
+    Spain. Its six products:</p>
+    <ul class="products">
+      <li><b>P1</b> Harmonised fire record, 1968–present (EGIF ⇄ EFFIS)</li>
+      <li><b>P2</b> Daily fire-danger reanalysis, 1 km, 1980–present</li>
+      <li><b>P3</b> 25 m fuel &amp; structure layer from PNOA-LiDAR + MFE</li>
+      <li><b>P4</b> Calibrated daily ignition-hazard model</li>
+      <li><b>P5</b> Monte Carlo burn probability &amp; exposure</li>
+      <li><b>P6</b> Fuel-treatment placement optimiser</li>
+    </ul>
+    <p><a href="design/">Read the full design document →</a></p>
+    <div class="attribution">
+      <p>Fire danger, detections and burnt areas: © European Union, Copernicus
+      Emergency Management Service — EFFIS. Contains modified Copernicus EMS
+      information 2026. Historical statistics: MITECO / EGIF (approximate).
+      Basemap: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>
       contributors, © <a href="https://carto.com/attributions">CARTO</a>.</p>
-    </footer>
-  </aside>
+    </div>
+  </details>
 
-  <div id="map" role="application" aria-label="Map of Spain with wildfire layers"></div>
-</div>
+</aside>
 
 <div id="tooltip" class="tooltip" hidden></div>
 
