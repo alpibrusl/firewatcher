@@ -103,6 +103,33 @@
     floor and can lag. Analytical view, not an emergency service.</p>
   </section>
 
+  <section class="card region-card" aria-label="Regional analytics">
+    <div class="card-head"><h2>Regional analytics</h2><span class="muted">GWIS · MODIS burned area</span></div>
+    <select id="region-select" class="region-select" aria-label="Choose a region">
+      <option value="ESP">España — national</option>
+    </select>
+    <div id="region-stats" class="today-stats" hidden>
+      <div class="stat">
+        <span class="stat-value" id="rs-ba">–</span>
+        <span class="stat-label">ha burnt so far in <span class="rs-year"></span></span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="rs-avg">–</span>
+        <span class="stat-label">ha burnt in an average year (2006–<span id="rs-prev"></span>)</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="rs-nf">–</span>
+        <span class="stat-label">fires mapped in <span class="rs-year"></span> · avg size <span id="rs-size">–</span> ha</span>
+      </div>
+    </div>
+    <div id="region-chart" class="chart" aria-label="Burned area per year for the selected region"></div>
+    <p id="region-fallback" class="note" hidden>Regional statistics are unavailable right now — try again later.</p>
+    <p class="note">Satellite-mapped burned area (MODIS, ≳30 ha) from the GWIS
+    country profiles, aggregated to GADM regions. Figures differ from the
+    national EGIF statistic; this dataset publishes comunidades, not
+    provincias. Selecting a region also zooms the map.</p>
+  </section>
+
   <section class="card chart-card" aria-label="Annual burned area in Spain">
     <div class="card-head"><h2>Burned area per year</h2><span class="muted">Spain · kha</span></div>
     <p class="note tight">Approx. totals per EGIF/MITECO; 2025 provisional (EFFIS).</p>
