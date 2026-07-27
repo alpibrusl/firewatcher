@@ -1,0 +1,54 @@
+name: Probe EFFIS WMS layers
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/probe-wms.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GetCapabilities layer inventory
+        run: |
+          wms="https://maps.effis.emergency.copernicus.eu/effis"
+          curl -sS -m 40 "$wms?service=WMS&request=GetCapabilities&version=1.1.1" -o caps.xml || true
+          echo "--- caps size: $(wc -c < caps.xml)"
+          echo "--- layer names (hs/ba/fwi/fire-related):"
+          grep -oE '<Name>[^<]+</Name>' caps.xml | sed 's/<[^>]*>//g' | sort -u | grep -iE 'hs|ba|fwi|fire|hotspot|burn|viirs|modis' | head -60 || true
+          echo "--- all layer names (first 80):"
+          grep -oE '<Name>[^<]+</Name>' caps.xml | sed 's/<[^>]*>//g' | sort -u | head -80 || true
+          echo "--- SRS support: 3857=$(grep -c 'EPSG:3857' caps.xml || true) 900913=$(grep -c 'EPSG:900913' caps.xml || true) 4326=$(grep -c 'EPSG:4326' caps.xml || true)"
+
+      - name: GetMap smoke tests over central Spain
+        run: |
+          wms="https://maps.effis.emergency.copernicus.eu/effis"
+          today=$(date -u +%Y-%m-%d)
+          yday=$(date -u -d "yesterday" +%Y-%m-%d)
+          test_layer () {
+            layer="$1"; srs="$2"; bbox="$3"; time="$4"
+            url="$wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=${layer}&STYLES=&FORMAT=image/png&TRANSPARENT=true&SRS=${srs}&BBOX=${bbox}&WIDTH=512&HEIGHT=512"
+            [ -n "$time" ] && url="${url}&TIME=${time}"
+            curl -sS -m 30 "$url" -o out.bin || { echo "$layer $srs time=$time -> curl error"; return; }
+            kind=$(file -b out.bin)
+            size=$(wc -c < out.bin)
+            echo "$layer $srs time=$time -> $size bytes, $kind"
+            case "$kind" in *XML*|*ASCII*|*text*) head -c 500 out.bin; echo;; esac
+          }
+          bbox4326="-7.0,39.0,-2.0,42.0"
+          bbox3857="-779236.0,4721671.0,-222638.0,5165920.0"
+          for layer in viirs.hs modis.hs nasa.viirs.hs viirs.hs.last24 hs effis.hs modis.ba ba effis.ba ba.poly nrt.ba ecmwf007.fwi ; do
+            test_layer "$layer" "EPSG:4326" "$bbox4326" "$today"
+          done
+          echo "--- yesterday variants:"
+          test_layer "viirs.hs" "EPSG:4326" "$bbox4326" "$yday"
+          test_layer "modis.ba" "EPSG:4326" "$bbox4326" "$yday"
+          echo "--- no TIME:"
+          test_layer "viirs.hs" "EPSG:4326" "$bbox4326" ""
+          echo "--- web mercator:"
+          test_layer "viirs.hs" "EPSG:3857" "$bbox3857" "$today"
+          test_layer "ecmwf007.fwi" "EPSG:3857" "$bbox3857" "$today"
