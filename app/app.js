@@ -3,6 +3,12 @@
 
 const EFFIS_WMS = "https://maps.effis.emergency.copernicus.eu/effis";
 
+function isoDate(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+const today = new Date();
+
 /* ---------- map ---------- */
 
 function initMap() {
@@ -30,12 +36,11 @@ const basemap = L.tileLayer(basemapUrl(darkMode.matches), {
 
 darkMode.addEventListener("change", (e) => basemap.setUrl(basemapUrl(e.matches)));
 
-function isoDate(d) {
-  return d.toISOString().slice(0, 10);
-}
-
-const today = new Date();
-
+// The EFFIS WMS renders every tile on demand (no CDN cache), so each request
+// costs real server time. Fetch 512px tiles (4x fewer requests per view),
+// wait for the zoom/pan to settle before requesting (updateWhenIdle /
+// updateWhenZooming), and keep a generous buffer of stale tiles on screen so
+// the map never blanks out while replacements render.
 function effisLayer(layerName, extra = {}) {
   return L.tileLayer.wms(EFFIS_WMS, {
     layers: layerName,
@@ -43,6 +48,10 @@ function effisLayer(layerName, extra = {}) {
     transparent: true,
     version: "1.1.1",
     attribution: "&copy; European Union, Copernicus EMS &mdash; EFFIS",
+    tileSize: 512,
+    updateWhenIdle: true,
+    updateWhenZooming: false,
+    keepBuffer: 6,
     ...extra,
   });
 }
@@ -52,27 +61,48 @@ function effisLayer(layerName, extra = {}) {
 // noaa.hs, burnt areas as modis.ba.* aggregates. The hotspot and burnt-area
 // layers render EMPTY tiles when a TIME parameter is sent — they must be
 // requested without TIME and then show the current detections / season.
-const fwiLayer = effisLayer("mf010.fwi", { opacity: 0.55 });
-const hotspotLayer = effisLayer("all.hs");
-const burntLayer = effisLayer("modis.ba.season");
+// Fire danger keeps its own layer (it has independent opacity and TIME), but
+// the FWI raster is ~10 km resolution, so past zoom 8 Leaflet upscales the
+// cached tiles instead of re-requesting — deep zooms cost zero FWI requests.
+const fwiLayer = effisLayer("mf010.fwi", { opacity: 0.55, maxNativeZoom: 8 });
+
+// Hotspots and burnt areas share one combined WMS request per tile (WMS
+// composites comma-separated layers server-side, burnt areas drawn under
+// hotspots), halving EFFIS round-trips per view.
+const DETECTION_LAYERS = { ba: "modis.ba.season", hs: "all.hs" };
+const detectionState = { ba: true, hs: true };
+const detectionLayer = effisLayer(`${DETECTION_LAYERS.ba},${DETECTION_LAYERS.hs}`);
+
+function syncDetectionLayer() {
+  const layers = ["ba", "hs"]
+    .filter((k) => detectionState[k])
+    .map((k) => DETECTION_LAYERS[k])
+    .join(",");
+  if (!layers) {
+    map.removeLayer(detectionLayer);
+    return;
+  }
+  if (detectionLayer.wmsParams.layers !== layers) {
+    detectionLayer.setParams({ layers });
+  }
+  if (!map.hasLayer(detectionLayer)) detectionLayer.addTo(map);
+}
 
 fwiLayer.addTo(map);
-hotspotLayer.addTo(map);
-burntLayer.addTo(map);
+detectionLayer.addTo(map);
 
 /* ---------- layer controls ---------- */
 
-function bindToggle(id, layer) {
-  const box = document.getElementById(id);
-  box.addEventListener("change", () => {
-    if (box.checked) layer.addTo(map);
-    else map.removeLayer(layer);
+document.getElementById("lyr-fwi").addEventListener("change", (e) => {
+  if (e.target.checked) fwiLayer.addTo(map);
+  else map.removeLayer(fwiLayer);
+});
+for (const [id, key] of [["lyr-hs", "hs"], ["lyr-ba", "ba"]]) {
+  document.getElementById(id).addEventListener("change", (e) => {
+    detectionState[key] = e.target.checked;
+    syncDetectionLayer();
   });
 }
-
-bindToggle("lyr-fwi", fwiLayer);
-bindToggle("lyr-hs", hotspotLayer);
-bindToggle("lyr-ba", burntLayer);
 
 const opacityInput = document.getElementById("fwi-opacity");
 opacityInput.addEventListener("input", () => {
@@ -94,7 +124,17 @@ dateInput.addEventListener("change", () => {
   setFwiDate(fwiLayer, dateInput.value);
 });
 
-return { map, fwiLayer, hotspotLayer, burntLayer, dateInput };
+function showAllLayers() {
+  for (const id of ["lyr-fwi", "lyr-hs", "lyr-ba"]) {
+    document.getElementById(id).checked = true;
+  }
+  fwiLayer.addTo(map);
+  detectionState.ba = true;
+  detectionState.hs = true;
+  syncDetectionLayer();
+}
+
+return { map, fwiLayer, dateInput, showAllLayers };
 }
 
 // The mf010.fwi layer defaults to the current forecast when TIME is absent;
@@ -140,14 +180,7 @@ function initToday(ctx) {
 
   document.getElementById("btn-today").addEventListener("click", () => {
     if (!ctx) return;
-    for (const [id, layer] of [
-      ["lyr-fwi", ctx.fwiLayer],
-      ["lyr-hs", ctx.hotspotLayer],
-      ["lyr-ba", ctx.burntLayer],
-    ]) {
-      document.getElementById(id).checked = true;
-      layer.addTo(ctx.map);
-    }
+    ctx.showAllLayers();
     ctx.dateInput.value = isoDate(new Date());
     setFwiDate(ctx.fwiLayer, ctx.dateInput.value);
     ctx.map.setView([39.9, -3.6], 6);

@@ -1,0 +1,47 @@
+name: Probe EFFIS WMS tile options
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/probe-wms.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compare tile sizes and combined layers
+        run: |
+          getmap () {
+            name="$1"; layers="$2"; size="$3"; bbox="$4"
+            url="https://maps.effis.emergency.copernicus.eu/effis?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=${layers}&SRS=EPSG:3857&BBOX=${bbox}&WIDTH=${size}&HEIGHT=${size}&FORMAT=image%2Fpng&TRANSPARENT=true"
+            out=$(curl -sS -m 30 -o "${name}.png" -w "%{http_code} %{time_total}s %{size_download}B %{content_type}" "$url" || echo "curl-error")
+            echo "${name}: ${out}"
+            file "${name}.png" | sed "s/^/${name}: /"
+          }
+          # z6-ish tile over NW Spain (Galicia/León, active fire country)
+          B1="-1252344.27,4383204.95,-626172.13,5009377.09"
+          # z10-ish small bbox near Ourense
+          B2="-861000,5170000,-822000,5209000"
+          echo "==== 256 vs 512, single layers"
+          getmap fwi-256 "mf010.fwi" 256 "$B1"
+          getmap fwi-512 "mf010.fwi" 512 "$B1"
+          getmap hs-512 "all.hs" 512 "$B1"
+          getmap ba-512 "modis.ba.season" 512 "$B1"
+          echo "==== combined hs+ba in one request"
+          getmap combo-512 "modis.ba.season,all.hs" 512 "$B1"
+          getmap combo-deep "modis.ba.season,all.hs" 512 "$B2"
+          echo "==== pixel check: combined should contain content of both"
+          python3 - <<'EOF'
+          from PIL import Image
+          for name in ["hs-512", "ba-512", "combo-512", "combo-deep", "fwi-512"]:
+              try:
+                  im = Image.open(f"{name}.png").convert("RGBA")
+                  px = [p for p in im.getdata() if p[3] > 0]
+                  print(f"{name}: {im.size}, non-transparent px = {len(px)}")
+              except Exception as e:
+                  print(f"{name}: unreadable ({e})")
+          EOF
