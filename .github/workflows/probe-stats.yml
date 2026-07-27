@@ -13,17 +13,26 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Query candidate endpoints
+      - name: Extract API URLs from the EFFIS statistics app
         run: |
-          year=$(date -u +%Y)
-          for url in \
-            "https://api2.effis.emergency.copernicus.eu/api/effis/seasonaltrend/ESP/${year}" \
-            "https://api2.effis.emergency.copernicus.eu/api/effis/seasonaltrend/json/ESP/${year}" \
-            "https://api2.effis.emergency.copernicus.eu/api/effis/seasonaltrend/ESP/${year}/BA" \
-            "https://api2.effis.emergency.copernicus.eu/statistics/v2/effis/seasonaltrend?country=ESP&year=${year}" \
-            "https://api2.effis.emergency.copernicus.eu/api/gwis/seasonaltrend/ESP/${year}" ; do
-            echo "================ ${url}"
-            curl -sS -m 20 -H "Origin: https://alpibrusl.github.io" -D - "$url" 2>&1 | head -c 4000 || true
-            echo
+          base="https://forest-fire.emergency.copernicus.eu"
+          page="$base/apps/effis.statistics/seasonaltrend"
+          curl -sSL -m 30 "$page" -o page.html || true
+          echo "--- page size: $(wc -c < page.html)"
+          echo "--- script/link references:"
+          grep -oE '(src|href)="[^"]+"' page.html | grep -E '\.(js|mjs)' | head -20 || true
+          echo
+          echo "--- API-looking strings in the page itself:"
+          grep -oE '[^"'"'"' ]*(api2\.[^"'"'"' ]*|/statistics/[^"'"'"' ]*|seasonaltrend[^"'"'"' ]*)' page.html | sort -u | head -30 || true
+          echo
+          for s in $(grep -oE 'src="[^"]+\.js[^"]*"' page.html | sed 's/^src="//;s/"$//' | head -8); do
+            case "$s" in
+              http*) u="$s" ;;
+              /*)    u="$base$s" ;;
+              *)     u="$base/apps/effis.statistics/$s" ;;
+            esac
+            echo "================ bundle: $u"
+            curl -sS -m 30 "$u" -o bundle.js || continue
+            grep -oE '["'"'"'][^"'"'"']*(api2|/statistics/|seasonaltrend|/api/)[^"'"'"']*["'"'"']' bundle.js | sort -u | head -60 || true
             echo
           done
