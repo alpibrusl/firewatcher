@@ -13,7 +13,7 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Find AOI usage in the statistics app bundles
+      - name: Find the country-profile app and its sub-national endpoints
         run: |
           base="https://forest-fire.emergency.copernicus.eu"
           curl -sSL -m 30 "$base/apps/effis.statistics/seasonaltrend" -o page.html || true
@@ -21,26 +21,28 @@ jobs:
             case "$s" in http*) u="$s" ;; /*) u="$base$s" ;; *) u="$base/apps/effis.statistics/$s" ;; esac
             curl -sS -m 30 "$u" -o bundle.js || continue
             echo "=== $u"
-            grep -oE '.{60}aoi.{60}' bundle.js | head -30 || true
-            echo "--- nuts mentions:"
-            grep -oiE '.{40}nuts.{40}' bundle.js | head -15 || true
-            echo
+            grep -oE '.{20}CountryProfile.{110}' bundle.js | head -10 || true
+            grep -oE '.{10}country\.profile.{110}' bundle.js | head -10 || true
+          done
+          echo
+          echo "=== trying country profile app pages:"
+          for app in "country.profile" "gwis.cp" "gwis.country.profile" "effis.cp" ; do
+            code=$(curl -sS -o cp.html -w "%{http_code}" -m 20 "$base/apps/$app/ESP" || echo err)
+            echo "$app -> $code ($(wc -c < cp.html) bytes)"
           done
 
-      - name: Test candidate AOI endpoints
+      - name: Confirm AOI semantics and probe utils
         run: |
-          api="https://api2.effis.emergency.copernicus.eu/statistics/v2"
+          api="https://api2.effis.emergency.copernicus.eu"
           try () {
             echo "================ $1"
             curl -sS -m 20 "$1" -o out.json 2>/dev/null || { echo "curl error"; return; }
             echo "size=$(wc -c < out.json)"
-            head -c 900 out.json; echo
+            head -c 1200 out.json; echo
           }
-          try "$api/effis/weeklyaoi?aoi=ES61"
-          try "$api/effis/weeklyaoi?aoi=ES30"
-          try "$api/effis/weeklyaoi?aoi=ES6"
-          try "$api/effis/weeklyaoi?aoi=Andalucia"
-          try "$api/aoi?country=ESP"
-          try "$api/aoi/list?country=ESP"
-          try "$api/aoilist?country=ESP"
-          try "$api/effis/aoi?country=ESP"
+          try "$api/statistics/utils/aoi?scope=effis"
+          try "$api/statistics/utils/countriesbyaoi?aoi=EU"
+          try "$api/statistics/v2/effis/weekly?country=ESP&admin=1"
+          try "$api/statistics/v2/effis/weeklyadmin?country=ESP"
+          try "$api/api/effis/countryprofile/ESP"
+          try "$api/api/gwis/countryprofile/ESP"
