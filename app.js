@@ -241,26 +241,35 @@ function hideTooltip() {
   tooltip.hidden = true;
 }
 
-function renderChart() {
-  const host = document.getElementById("chart");
+function niceCeil(v) {
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / p;
+  const mult = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 4 ? 4 : n <= 5 ? 5 : n <= 8 ? 8 : 10;
+  return mult * p;
+}
+
+// Renders a bar chart into host. points: {label, value, html, aria}[];
+// opts: {direct: Set of labels to annotate, fmtTick, aria}.
+function barChart(host, points, opts) {
+  const { direct = new Set(), fmtTick = String, aria = "Bar chart" } = opts || {};
+  host.innerHTML = "";
+  if (!points.length) return;
+
   const W = 320;
   const H = 170;
-  const m = { top: 16, right: 6, bottom: 20, left: 30 };
+  const m = { top: 16, right: 6, bottom: 20, left: 34 };
   const plotW = W - m.left - m.right;
   const plotH = H - m.top - m.bottom;
-  const yMax = 400;
-  const n = BURNED_KHA.length;
+  const yMax = niceCeil(Math.max(...points.map((p) => p.value), 1));
+  const n = points.length;
   const step = plotW / n;
-  const barW = Math.floor(step) - 2;
+  const barW = Math.max(2, Math.floor(step) - 2);
 
   const svgNS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(svgNS, "svg");
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.setAttribute("role", "img");
-  svg.setAttribute(
-    "aria-label",
-    "Bar chart of annual burned area in Spain, 2005 to 2025, in thousand hectares"
-  );
+  svg.setAttribute("aria-label", aria);
 
   const el = (name, attrs, parent) => {
     const node = document.createElementNS(svgNS, name);
@@ -271,16 +280,17 @@ function renderChart() {
 
   const y = (v) => m.top + plotH * (1 - v / yMax);
 
-  for (const tickVal of [100, 200, 300, 400]) {
+  for (let i = 1; i <= 4; i++) {
+    const v = (yMax / 4) * i;
     el("line", {
       class: "grid-line",
-      x1: m.left, x2: W - m.right, y1: y(tickVal), y2: y(tickVal),
+      x1: m.left, x2: W - m.right, y1: y(v), y2: y(v),
     });
     const label = el("text", {
       class: "tick-y",
-      x: m.left - 4, y: y(tickVal) + 3, "text-anchor": "end",
+      x: m.left - 4, y: y(v) + 3, "text-anchor": "end",
     });
-    label.textContent = String(tickVal);
+    label.textContent = fmtTick(v);
   }
 
   el("line", {
@@ -288,9 +298,9 @@ function renderChart() {
     x1: m.left, x2: W - m.right, y1: y(0), y2: y(0),
   });
 
-  BURNED_KHA.forEach(([year, kha], i) => {
+  points.forEach((p, i) => {
     const x = m.left + i * step + 1;
-    const top = y(kha);
+    const top = y(p.value);
     const h = y(0) - top;
     const r = Math.min(2, h);
     const bar = el("path", {
@@ -298,32 +308,31 @@ function renderChart() {
       d: `M${x},${y(0)} v${-(h - r)} q0,${-r} ${r},${-r} h${barW - 2 * r} q${r},0 ${r},${r} v${h - r} z`,
     });
 
-    if (DIRECT_LABELS.has(year)) {
+    if (direct.has(p.label)) {
       const label = el("text", {
         class: "direct-label",
-        x: x + barW / 2, y: top - 4, "text-anchor": i === n - 1 ? "end" : "middle",
+        x: x + barW / 2, y: top - 4,
+        "text-anchor": i === n - 1 ? "end" : i === 0 ? "start" : "middle",
       });
-      label.textContent = String(kha);
+      label.textContent = fmtTick(p.value);
     }
 
-    if (year.endsWith("0") || year.endsWith("5")) {
+    if (Number(p.label) % 5 === 0) {
       const tick = el("text", {
         x: x + barW / 2, y: H - 6, "text-anchor": "middle",
       });
-      tick.textContent = year;
+      tick.textContent = p.label;
     }
 
-    const note = PROVISIONAL.has(year) ? " · provisional (EFFIS)" : "";
     const hit = el("rect", {
       class: "bar-hit",
       x: m.left + i * step, y: m.top, width: step, height: plotH,
       tabindex: "0",
-      "aria-label": `${year}: about ${kha} thousand hectares${note}`,
+      "aria-label": p.aria,
     });
-    const html = `<span class="t-title">${year}</span><br><span class="t-value">≈ ${kha},000 ha burned${note}</span>`;
     hit.addEventListener("mousemove", (e) => {
       bar.classList.add("hover");
-      showTooltip(html, e.clientX, e.clientY);
+      showTooltip(p.html, e.clientX, e.clientY);
     });
     hit.addEventListener("mouseleave", () => {
       bar.classList.remove("hover");
@@ -331,12 +340,29 @@ function renderChart() {
     });
     hit.addEventListener("focus", () => {
       const r2 = hit.getBoundingClientRect();
-      showTooltip(html, r2.left + r2.width / 2, r2.top);
+      showTooltip(p.html, r2.left + r2.width / 2, r2.top);
     });
     hit.addEventListener("blur", hideTooltip);
   });
 
   host.appendChild(svg);
+}
+
+function renderNationalChart() {
+  const points = BURNED_KHA.map(([year, kha]) => {
+    const note = PROVISIONAL.has(year) ? " · provisional (EFFIS)" : "";
+    return {
+      label: year,
+      value: kha,
+      html: `<span class="t-title">${year}</span><br><span class="t-value">≈ ${kha},000 ha burned${note}</span>`,
+      aria: `${year}: about ${kha} thousand hectares${note}`,
+    };
+  });
+  barChart(document.getElementById("chart"), points, {
+    direct: DIRECT_LABELS,
+    fmtTick: (v) => String(Math.round(v)),
+    aria: "Bar chart of annual burned area in Spain, 2005 to 2025, in thousand hectares",
+  });
 
   const tbody = document.querySelector("#chart-table-el tbody");
   for (const [year, kha] of BURNED_KHA) {
@@ -347,7 +373,116 @@ function renderChart() {
   }
 }
 
-renderChart();
+/* ---------- regional analytics (GWIS country-profile API) ---------- */
+
+const CPROF_API = "https://cprof.effis.emergency.copernicus.eu/api/v3";
+
+// GADM admin-1 regions for Spain as served by the GWIS country-profile API
+// (subcountries?admin0=ESP), with approximate map bounds [S, W, N, E].
+const REGIONS = [
+  ["ESP.1_1", "Andalucía", [36.0, -7.6, 38.8, -1.6]],
+  ["ESP.2_1", "Aragón", [39.8, -2.2, 42.9, 0.8]],
+  ["ESP.3_1", "Cantabria", [42.7, -4.9, 43.6, -3.1]],
+  ["ESP.4_1", "Castilla-La Mancha", [38.0, -5.4, 41.4, -0.9]],
+  ["ESP.5_1", "Castilla y León", [40.1, -7.2, 43.3, -1.8]],
+  ["ESP.6_1", "Cataluña", [40.5, 0.1, 42.9, 3.4]],
+  ["ESP.7_1", "Ceuta y Melilla", [35.1, -5.5, 35.6, -2.9]],
+  ["ESP.8_1", "Comunidad de Madrid", [39.9, -4.6, 41.2, -3.0]],
+  ["ESP.9_1", "Comunidad Foral de Navarra", [41.9, -2.5, 43.3, -0.7]],
+  ["ESP.10_1", "Comunidad Valenciana", [37.8, -1.6, 40.8, 0.7]],
+  ["ESP.11_1", "Extremadura", [37.9, -7.5, 40.5, -4.6]],
+  ["ESP.12_1", "Galicia", [41.8, -9.4, 43.8, -6.7]],
+  ["ESP.13_1", "Islas Baleares", [38.6, 1.1, 40.1, 4.4]],
+  ["ESP.14_1", "Islas Canarias", [27.5, -18.3, 29.5, -13.3]],
+  ["ESP.15_1", "La Rioja", [41.9, -3.2, 42.7, -1.6]],
+  ["ESP.16_1", "País Vasco", [42.4, -3.5, 43.5, -1.7]],
+  ["ESP.17_1", "Principado de Asturias", [42.9, -7.2, 43.7, -4.5]],
+  ["ESP.18_1", "Región de Murcia", [37.3, -2.4, 38.8, -0.6]],
+];
+
+function initRegions(ctx) {
+  const sel = document.getElementById("region-select");
+  for (const [gid, name] of REGIONS) {
+    const opt = document.createElement("option");
+    opt.value = gid;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  }
+  for (const el of document.querySelectorAll(".rs-year")) {
+    el.textContent = String(today.getFullYear());
+  }
+  document.getElementById("rs-prev").textContent = String(today.getFullYear() - 1);
+  sel.addEventListener("change", () => selectRegion(ctx, sel.value));
+  selectRegion(null, "ESP");
+}
+
+async function selectRegion(ctx, gid) {
+  const region = REGIONS.find((r) => r[0] === gid);
+  if (ctx && region) {
+    const [s, w, n, e] = region[2];
+    ctx.map.fitBounds([[s, w], [n, e]], { padding: [20, 20] });
+  } else if (ctx && gid === "ESP") {
+    ctx.map.setView([39.9, -3.6], 6);
+  }
+
+  const stats = document.getElementById("region-stats");
+  const fallback = document.getElementById("region-fallback");
+  const year = today.getFullYear();
+  const level = gid === "ESP" ? "ADM0" : "ADM1";
+  const url = `${CPROF_API}/banf?level=${level}&value=${gid}&year=${year}&yearFrom=2006&yearTo=${year}&env=PROD`;
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    const years = (data.banfyear || []).filter(
+      (d) => Number.isFinite(d.year) && Number.isFinite(d.ba_area_ha)
+    );
+    if (!years.length) throw new Error("empty banfyear");
+    renderRegionStats(years, year);
+    renderRegionChart(years, region ? region[1] : "Spain");
+    stats.hidden = false;
+    fallback.hidden = true;
+  } catch (err) {
+    console.error("regional stats unavailable:", err);
+    stats.hidden = true;
+    document.getElementById("region-chart").innerHTML = "";
+    fallback.hidden = false;
+  }
+}
+
+function renderRegionStats(years, currentYear) {
+  const fmt = (v) => Math.round(v).toLocaleString("en");
+  const current = years.find((d) => d.year === currentYear);
+  const past = years.filter((d) => d.year < currentYear);
+  const avgBa = past.length
+    ? past.reduce((a, d) => a + d.ba_area_ha, 0) / past.length
+    : null;
+  document.getElementById("rs-ba").textContent = current ? fmt(current.ba_area_ha) : "0";
+  document.getElementById("rs-avg").textContent = avgBa === null ? "n/a" : fmt(avgBa);
+  document.getElementById("rs-nf").textContent = current ? fmt(current.ba_count || 0) : "0";
+  document.getElementById("rs-size").textContent =
+    current && current.firesize ? fmt(current.firesize) : "–";
+}
+
+function renderRegionChart(years, name) {
+  const maxVal = Math.max(...years.map((d) => d.ba_area_ha));
+  const peak = years.find((d) => d.ba_area_ha === maxVal);
+  const fmtTick = (v) =>
+    v >= 1000 ? `${Math.round(v / 1000)}k` : String(Math.round(v));
+  const points = years.map((d) => ({
+    label: String(d.year),
+    value: d.ba_area_ha,
+    html: `<span class="t-title">${d.year}</span><br><span class="t-value">${Math.round(d.ba_area_ha).toLocaleString("en")} ha burned · ${d.ba_count || 0} fires</span>`,
+    aria: `${d.year}: ${Math.round(d.ba_area_ha).toLocaleString("en")} hectares, ${d.ba_count || 0} fires`,
+  }));
+  barChart(document.getElementById("region-chart"), points, {
+    direct: peak ? new Set([String(peak.year)]) : new Set(),
+    fmtTick,
+    aria: `Bar chart of annual satellite-mapped burned area in ${name}, 2006 to ${years[years.length - 1].year}, in hectares`,
+  });
+}
+
+renderNationalChart();
 
 let mapCtx = null;
 try {
@@ -356,3 +491,4 @@ try {
   console.error("map failed to initialise:", err);
 }
 initToday(mapCtx);
+initRegions(mapCtx);
