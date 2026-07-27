@@ -13,39 +13,32 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Install pillow
-        run: pip install pillow
-      - name: Compare tile sizes and combined layers
+      - name: FWI 256 vs 512 render times, cold and warm
         run: |
           getmap () {
             name="$1"; layers="$2"; size="$3"; bbox="$4"
             url="https://maps.effis.emergency.copernicus.eu/effis?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=${layers}&STYLES=&SRS=EPSG%3A3857&BBOX=${bbox}&WIDTH=${size}&HEIGHT=${size}&FORMAT=image%2Fpng&TRANSPARENT=TRUE"
-            out=$(curl -sS -m 60 -o "${name}.png" -w "%{http_code} %{time_total}s %{size_download}B %{content_type}" "$url" || echo "curl-error")
+            out=$(curl -sS -m 90 -o "${name}.png" -w "%{http_code} %{time_total}s %{size_download}B %{content_type}" "$url" || echo "curl-error")
             echo "${name}: ${out}"
-            if file "${name}.png" 2>/dev/null | grep -q XML; then
-              echo "--- server exception body:"; cat "${name}.png"; echo
-            fi
           }
-          # z6-ish tile over NW Spain (Galicia/León, active fire country)
-          B1="-1252344.27,4383204.95,-626172.13,5009377.09"
-          # z10-ish small bbox near Ourense
-          B2="-861000,5170000,-822000,5209000"
-          echo "==== 256 vs 512, single layers"
-          getmap fwi-256 "mf010.fwi" 256 "$B1"
-          getmap fwi-512 "mf010.fwi" 512 "$B1"
-          getmap hs-512 "all.hs" 512 "$B1"
-          getmap ba-512 "modis.ba.season" 512 "$B1"
-          echo "==== combined hs+ba in one request"
-          getmap combo-512 "modis.ba.season,all.hs" 512 "$B1"
-          getmap combo-deep "modis.ba.season,all.hs" 512 "$B2"
-          echo "==== pixel check: combined should contain content of both"
-          python3 - <<'EOF'
-          from PIL import Image
-          for name in ["hs-512", "ba-512", "combo-512", "combo-deep", "fwi-512"]:
-              try:
-                  im = Image.open(f"{name}.png").convert("RGBA")
-                  px = [p for p in im.getdata() if p[3] > 0]
-                  print(f"{name}: {im.size}, non-transparent px = {len(px)}")
-              except Exception as e:
-                  print(f"{name}: unreadable ({e})")
-          EOF
+          # Distinct bboxes to avoid server-side cache flattering the numbers
+          NW="-1252344.27,4383204.95,-626172.13,5009377.09"
+          NE="-626172.13,4383204.95,0,5009377.09"
+          SW="-1252344.27,4383204.95,-626172.13,4383204.95"
+          S1="-626172.13,4383204.95,0,4383204.95"
+          # note: two of those are degenerate; use proper southern tiles
+          S2="-1252344.27,4696291.02,-939258.20,5009377.09"
+          S3="-939258.20,4383204.95,-626172.13,4696291.02"
+          echo "==== FWI cold renders"
+          getmap fwi256-a "mf010.fwi" 256 "$NW"
+          getmap fwi256-b "mf010.fwi" 256 "$NE"
+          getmap fwi512-a "mf010.fwi" 512 "$NW"
+          getmap fwi512-b "mf010.fwi" 512 "$NE"
+          getmap fwi512-c "mf010.fwi" 512 "$S2"
+          getmap fwi256-c "mf010.fwi" 256 "$S3"
+          echo "==== warm repeats (same bbox again)"
+          getmap fwi512-a2 "mf010.fwi" 512 "$NW"
+          getmap fwi256-a2 "mf010.fwi" 256 "$NW"
+          echo "==== detection layer warm sanity"
+          getmap combo-a "modis.ba.season,all.hs" 512 "$NW"
+          getmap combo-a2 "modis.ba.season,all.hs" 512 "$NW"
