@@ -13,25 +13,30 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Extract exact banf/subcountries URL construction
+      - name: Find the API base URL in runtime config
         run: |
-          curl -sS -m 30 "https://gwis.jrc.ec.europa.eu/apps/country.profile/_nuxt/93bcba8.js" -o bundle.js || true
-          grep -oE '.{160}/api/v3/banf.{160}' bundle.js | head -5 || true
-          echo
-          grep -oE '.{80}/api/v3/subcountries.{120}' bundle.js | head -5 || true
+          base="https://gwis.jrc.ec.europa.eu"
+          curl -sSL -m 30 "$base/apps/country.profile/overview/ADM0/ESP" -o page.html || true
+          echo "--- absolute URLs in page:"
+          grep -oE 'https?://[^"'"'"' <>]+' page.html | sort -u | head -30 || true
+          for b in 6fd790d a1efe11 96a52f9 93bcba8 ; do
+            curl -sS -m 30 "$base/apps/country.profile/_nuxt/$b.js" -o bundle.js || continue
+            echo "=== $b.js baseURL/hosts:"
+            grep -oE '.{20}baseURL.{100}' bundle.js | head -5 || true
+            grep -oE 'https?://[a-z0-9.-]*(gwis|effis|europa|jrc)[^"'"'"' ]*' bundle.js | sort -u | head -20 || true
+          done
 
-      - name: Test v3 endpoints with CORS check
+      - name: Test with env=PROD and full banf params
         run: |
           try () {
             echo "================ $1"
             curl -sS -m 20 -H "Origin: https://alpibrusl.github.io" -D headers.txt "$1" -o out.json 2>/dev/null || { echo "curl error"; return; }
             grep -i "access-control-allow-origin" headers.txt || echo "(no CORS header)"
             echo "size=$(wc -c < out.json)"
-            head -c 900 out.json; echo
+            head -c 1000 out.json; echo
           }
-          g="https://gwis.jrc.ec.europa.eu/api/v3"
-          try "$g/subcountries?admin0=ESP"
-          try "$g/banf?level=admin0&value=ESP&yearFrom=2020&yearTo=2026"
-          try "$g/banf?level=admin1&value=ESP&yearFrom=2020&yearTo=2026"
-          try "$g/banf?level=admin1&value=ESP.1_1&yearFrom=2020&yearTo=2026"
-          try "$g/banf?level=admin0&value=ESP"
+          for host in "https://gwis.jrc.ec.europa.eu" "https://api.gwis.jrc.ec.europa.eu" "https://api2.effis.emergency.copernicus.eu" ; do
+            try "$host/api/v3/subcountries?admin0=ESP&env=PROD"
+          done
+          try "https://api2.effis.emergency.copernicus.eu/api/v3/banf?level=ADM1&value=ESP.1_1&year=2026&yearFrom=2006&yearTo=2026&env=PROD"
+          try "https://api2.effis.emergency.copernicus.eu/api/v3/banf?level=ADM0&value=ESP&year=2026&yearFrom=2006&yearTo=2026&env=PROD"
