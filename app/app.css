@@ -324,9 +324,6 @@ a:hover { text-decoration: underline; }
 .about summary::-webkit-details-marker { display: none; }
 .about p { font-size: 0.82rem; color: var(--ink-2); margin: 0.5rem 0; }
 
-.products { padding-left: 1.1rem; margin: 0.4rem 0; font-size: 0.8rem; }
-.products li { margin: 0.22rem 0; }
-
 .attribution {
   border-top: 1px solid var(--border);
   margin-top: 0.7rem;
