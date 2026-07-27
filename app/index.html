@@ -11,14 +11,15 @@
 </head>
 <body>
 
-<div id="map" role="application" aria-label="Map with live wildfire layers"></div>
+<div id="map" role="application" data-i18n-aria="mapAria" aria-label="Map with live wildfire layers"></div>
 
 <header class="brand">
   <span class="flame">🔥</span>
   <span class="brand-name">Firewatcher</span>
-  <span class="brand-sub">Spain wildfire dashboard</span>
+  <span class="brand-sub" data-i18n="brandSub">Spain wildfire dashboard</span>
   <nav>
     <a href="https://github.com/alpibrusl/firewatcher">GitHub</a>
+    <button id="lang-toggle" class="lang-toggle" type="button" aria-label="Cambiar idioma / switch language">ES</button>
   </nav>
 </header>
 
@@ -29,49 +30,49 @@
 
   <section class="card today" aria-label="Today at a glance">
     <div class="card-head">
-      <h2>Today at a glance</h2>
+      <h2 data-i18n="todayTitle">Today at a glance</h2>
       <span id="today-date" class="muted"></span>
     </div>
     <div id="today-stats" class="today-stats" hidden>
       <div class="stat">
         <span class="stat-value" id="ts-ba">–</span>
-        <span class="stat-label">ha burnt in <span class="ts-year"></span> (EFFIS-mapped)</span>
+        <span class="stat-label" data-i18n="tsBaLabel">ha burnt in {year} (EFFIS-mapped)</span>
       </div>
       <div class="stat">
         <span class="stat-value" id="ts-avg">–</span>
-        <span class="stat-label">avg. at this point of year, 2006–25</span>
+        <span class="stat-label" data-i18n="tsAvgLabel">avg. at this point of year, 2006–25</span>
       </div>
       <div class="stat">
         <span class="stat-value" id="ts-nf">–</span>
-        <span class="stat-label">fires ≥ ~30 ha mapped in <span class="ts-year"></span></span>
+        <span class="stat-label" data-i18n="tsNfLabel">fires ≥ ~30 ha mapped in {year}</span>
       </div>
     </div>
-    <p id="today-fallback" class="note" hidden>Live season totals unavailable —
+    <p id="today-fallback" class="note" data-i18n="todayFallback" hidden>Live season totals unavailable —
     see the <a href="https://forest-fire.emergency.copernicus.eu/apps/effis.statistics/seasonaltrend">EFFIS
     statistics portal</a> or <a href="https://forest-fire.emergency.copernicus.eu/apps/effis.csv/">situation
     viewer</a>.</p>
     <div class="chip-row" role="group" aria-label="Quick views">
-      <button class="chip" data-view="39.9,-3.6,6">Spain</button>
+      <button class="chip" data-view="39.9,-3.6,6" data-i18n="chipSpain">Spain</button>
       <button class="chip" data-view="28.3,-15.7,7">Canarias</button>
-      <button class="chip" data-view="36.8,-4.5,5">Iberia &amp; Maghreb</button>
-      <button id="btn-today" class="chip chip-accent">↺ Reset to today</button>
+      <button class="chip" data-view="36.8,-4.5,5" data-i18n="chipIberia">Iberia &amp; Maghreb</button>
+      <button id="btn-today" class="chip chip-accent" data-i18n="btnToday">↺ Reset to today</button>
     </div>
   </section>
 
   <section class="card layers" aria-label="Map layers">
-    <div class="card-head"><h2>Live layers</h2><span class="muted">Copernicus EFFIS</span></div>
+    <div class="card-head"><h2 data-i18n="layersTitle">Live layers</h2><span class="muted">Copernicus EFFIS</span></div>
 
     <div class="layer">
       <label class="switch">
         <input type="checkbox" id="lyr-fwi" checked>
         <span class="track" aria-hidden="true"></span>
-        <span class="layer-name">Fire danger forecast <small>FWI</small></span>
+        <span class="layer-name" data-i18n="fwiName">Fire danger forecast <small>FWI</small></span>
       </label>
       <input type="range" id="fwi-opacity" min="10" max="100" value="55"
-             aria-label="Fire danger layer opacity">
+             data-i18n-aria="fwiOpacityAria" aria-label="Fire danger layer opacity">
     </div>
     <div class="layer-extra">
-      <label for="fwi-date">Date</label>
+      <label for="fwi-date" data-i18n="dateLabel">Date</label>
       <input type="date" id="fwi-date">
     </div>
     <div class="legend">
@@ -79,14 +80,14 @@
       <div class="legend-ticks" aria-hidden="true">
         <span>0</span><span>5.2</span><span>11.2</span><span>21.3</span><span>38</span><span>50+</span>
       </div>
-      <span class="legend-note">Very low → extreme · FWI classes per EFFIS</span>
+      <span class="legend-note" data-i18n="legendNote">Very low → extreme · FWI classes per EFFIS</span>
     </div>
 
     <div class="layer">
       <label class="switch">
         <input type="checkbox" id="lyr-hs" checked>
         <span class="track" aria-hidden="true"></span>
-        <span class="layer-name">Active fire detections <small>VIIRS · MODIS · NOAA</small></span>
+        <span class="layer-name" data-i18n="hsName">Active fire detections <small>VIIRS · MODIS · NOAA</small></span>
       </label>
     </div>
 
@@ -94,62 +95,62 @@
       <label class="switch">
         <input type="checkbox" id="lyr-ba" checked>
         <span class="track" aria-hidden="true"></span>
-        <span class="layer-name">Burnt areas <small>current season</small></span>
+        <span class="layer-name" data-i18n="baName">Burnt areas <small>current season</small></span>
       </label>
     </div>
 
-    <p class="note">Layers cover the EFFIS domain — Europe, Middle East and
+    <p class="note" data-i18n="layersNote">Layers cover the EFFIS domain — Europe, Middle East and
     North Africa; pan freely. Detections/perimeters have a ~30 ha mapping
     floor and can lag. Analytical view, not an emergency service.</p>
   </section>
 
   <section class="card region-card" aria-label="Regional analytics">
-    <div class="card-head"><h2>Regional analytics</h2><span class="muted">GWIS · MODIS burned area</span></div>
-    <select id="region-select" class="region-select" aria-label="Choose a region">
+    <div class="card-head"><h2 data-i18n="regionTitle">Regional analytics</h2><span class="muted" data-i18n="regionMuted">GWIS · MODIS burned area</span></div>
+    <select id="region-select" class="region-select" data-i18n-aria="regionSelectAria" aria-label="Choose a region">
       <option value="ESP">España — national</option>
     </select>
     <div id="region-stats" class="today-stats" hidden>
       <div class="stat">
         <span class="stat-value" id="rs-ba">–</span>
-        <span class="stat-label">ha burnt so far in <span class="rs-year"></span></span>
+        <span class="stat-label" data-i18n="rsBaLabel">ha burnt so far in {year}</span>
       </div>
       <div class="stat">
         <span class="stat-value" id="rs-avg">–</span>
-        <span class="stat-label">ha burnt in an average year (2006–<span id="rs-prev"></span>)</span>
+        <span class="stat-label" data-i18n="rsAvgLabel">ha burnt in an average year (2006–{prev})</span>
       </div>
       <div class="stat">
         <span class="stat-value" id="rs-nf">–</span>
-        <span class="stat-label">fires mapped in <span class="rs-year"></span> · avg size <span id="rs-size">–</span> ha</span>
+        <span class="stat-label" data-i18n="rsNfLabel">fires mapped in {year} · avg size <span id="rs-size">–</span> ha</span>
       </div>
     </div>
-    <div id="region-chart" class="chart" aria-label="Burned area per year for the selected region"></div>
-    <p id="region-fallback" class="note" hidden>Regional statistics are unavailable right now — try again later.</p>
-    <p class="note">Satellite-mapped burned area (MODIS, ≳30 ha) from the GWIS
+    <div id="region-chart" class="chart" data-i18n-aria="regionChartAria" aria-label="Burned area per year for the selected region"></div>
+    <p id="region-fallback" class="note" data-i18n="regionFallback" hidden>Regional statistics are unavailable right now — try again later.</p>
+    <p class="note" data-i18n="regionNote">Satellite-mapped burned area (MODIS, ≳30 ha) from the GWIS
     country profiles, aggregated to GADM regions. Figures differ from the
     national EGIF statistic; this dataset publishes comunidades, not
     provincias. Selecting a region also zooms the map.</p>
   </section>
 
   <section class="card chart-card" aria-label="Annual burned area in Spain">
-    <div class="card-head"><h2>Burned area per year</h2><span class="muted">Spain · kha</span></div>
-    <p class="note tight">Approx. totals per EGIF/MITECO; 2025 provisional (EFFIS).</p>
+    <div class="card-head"><h2 data-i18n="chartTitle">Burned area per year</h2><span class="muted" data-i18n="chartMuted">Spain · kha</span></div>
+    <p class="note tight" data-i18n="chartNote">Approx. totals per EGIF/MITECO; 2025 provisional (EFFIS).</p>
     <div id="chart" class="chart"></div>
     <details class="chart-table">
-      <summary>View as table</summary>
+      <summary data-i18n="viewTable">View as table</summary>
       <table id="chart-table-el">
-        <thead><tr><th scope="col">Year</th><th scope="col">Burned area (ha, approx.)</th></tr></thead>
+        <thead><tr><th scope="col" data-i18n="thYear">Year</th><th scope="col" data-i18n="thBa">Burned area (ha, approx.)</th></tr></thead>
         <tbody></tbody>
       </table>
     </details>
   </section>
 
   <details class="card about">
-    <summary><h2>About Firewatcher</h2></summary>
-    <p>An open-data wildfire dashboard for Spain: live fire danger, satellite
+    <summary><h2 data-i18n="aboutTitle">About Firewatcher</h2></summary>
+    <p data-i18n="aboutBody">An open-data wildfire dashboard for Spain: live fire danger, satellite
     fire detections and burnt areas from the Copernicus EFFIS services, with
     historical context from the national fire statistics.</p>
     <div class="attribution">
-      <p>Fire danger, detections and burnt areas: © European Union, Copernicus
+      <p data-i18n="attribution">Fire danger, detections and burnt areas: © European Union, Copernicus
       Emergency Management Service — EFFIS. Contains modified Copernicus EMS
       information 2026. Historical statistics: MITECO / EGIF (approximate).
       Basemap: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>
