@@ -45,6 +45,8 @@ const I18N = {
     rsNfLabel: 'fires mapped in {year} · avg size <span id="rs-size">–</span> ha',
     regionChartAria: "Burned area per year for the selected region",
     regionFallback: "Regional statistics are unavailable right now — try again later.",
+    rsPending:
+      "The {year} annual figure isn't consolidated in GWIS yet — see \u201cToday at a glance\u201d for near-real-time season totals.",
     regionNote:
       "Satellite-mapped burned area (MODIS, ≳30 ha) from the GWIS country profiles, aggregated to GADM regions. Figures differ from the national EGIF statistic; this dataset publishes comunidades, not provincias. Selecting a region also zooms the map.",
     chartTitle: "Burned area per year",
@@ -108,6 +110,8 @@ const I18N = {
     regionChartAria: "Superficie quemada por año en la región seleccionada",
     regionFallback:
       "Las estadísticas regionales no están disponibles ahora mismo; inténtalo de nuevo más tarde.",
+    rsPending:
+      "El dato anual de {year} aún no está consolidado en GWIS — consulta «Hoy de un vistazo» para los totales casi en tiempo real de la temporada.",
     regionNote:
       "Superficie quemada cartografiada por satélite (MODIS, ≳30 ha) de los perfiles de país de GWIS, agregada a regiones GADM. Las cifras difieren de la estadística nacional EGIF; esta fuente publica comunidades, no provincias. Al elegir una región, el mapa también hace zoom.",
     chartTitle: "Superficie quemada por año",
@@ -662,20 +666,36 @@ async function selectRegion(ctx, gid) {
   }
 }
 
+// The GWIS annual series consolidates months after the fact, so the running
+// year is often absent or zero long after fires have burnt (the weekly
+// EFFIS stats in the today card are near-real-time). Render that state as
+// "not published yet", never as a false 0.
+function regionYearPending(years) {
+  const current = years.find((d) => d.year === today.getFullYear());
+  return !current || !(current.ba_area_ha > 0);
+}
+
 function renderRegionStats(years, currentYear) {
   const current = years.find((d) => d.year === currentYear);
   const past = years.filter((d) => d.year < currentYear);
   const avgBa = past.length
     ? past.reduce((a, d) => a + d.ba_area_ha, 0) / past.length
     : null;
-  document.getElementById("rs-ba").textContent = current ? fmtNum(current.ba_area_ha) : "0";
+  const pending = regionYearPending(years);
+  document.getElementById("rs-ba").textContent = pending ? "–" : fmtNum(current.ba_area_ha);
   document.getElementById("rs-avg").textContent = avgBa === null ? "n/a" : fmtNum(avgBa);
-  document.getElementById("rs-nf").textContent = current ? fmtNum(current.ba_count || 0) : "0";
+  document.getElementById("rs-nf").textContent = pending ? "–" : fmtNum(current.ba_count || 0);
   document.getElementById("rs-size").textContent =
-    current && current.firesize ? fmtNum(current.firesize) : "–";
+    !pending && current.firesize ? fmtNum(current.firesize) : "–";
+  document.getElementById("rs-pending").hidden = !pending;
 }
 
-function renderRegionChart(years, name) {
+function renderRegionChart(allYears, name) {
+  // Hide the running year's empty bar while its annual figure is unpublished.
+  const years = regionYearPending(allYears)
+    ? allYears.filter((d) => d.year < today.getFullYear())
+    : allYears;
+  if (!years.length) return;
   const maxVal = Math.max(...years.map((d) => d.ba_area_ha));
   const peak = years.find((d) => d.ba_area_ha === maxVal);
   const fmtTick = (v) =>
