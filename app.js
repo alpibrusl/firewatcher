@@ -9,6 +9,187 @@ function isoDate(d) {
 
 const today = new Date();
 
+/* ---------- i18n ---------- */
+
+const I18N = {
+  en: {
+    title: "Firewatcher — Spain Wildfire Risk Dashboard",
+    mapAria: "Map with live wildfire layers",
+    brandSub: "Spain wildfire dashboard",
+    hidePanel: "Hide panel",
+    showPanel: "Show panel",
+    todayTitle: "Today at a glance",
+    tsBaLabel: "ha burnt in {year} (EFFIS-mapped)",
+    tsAvgLabel: "avg. at this point of year, 2006–25",
+    tsNfLabel: "fires ≥ ~30 ha mapped in {year}",
+    todayFallback:
+      'Live season totals unavailable — see the <a href="https://forest-fire.emergency.copernicus.eu/apps/effis.statistics/seasonaltrend">EFFIS statistics portal</a> or <a href="https://forest-fire.emergency.copernicus.eu/apps/effis.csv/">situation viewer</a>.',
+    chipSpain: "Spain",
+    chipIberia: "Iberia &amp; Maghreb",
+    btnToday: "↺ Reset to today",
+    layersTitle: "Live layers",
+    fwiName: "Fire danger forecast <small>FWI</small>",
+    fwiOpacityAria: "Fire danger layer opacity",
+    dateLabel: "Date",
+    legendNote: "Very low → extreme · FWI classes per EFFIS",
+    hsName: "Active fire detections <small>VIIRS · MODIS · NOAA</small>",
+    baName: "Burnt areas <small>current season</small>",
+    layersNote:
+      "Layers cover the EFFIS domain — Europe, Middle East and North Africa; pan freely. Detections/perimeters have a ~30 ha mapping floor and can lag. Analytical view, not an emergency service.",
+    regionTitle: "Regional analytics",
+    regionMuted: "GWIS · MODIS burned area",
+    regionSelectAria: "Choose a region",
+    regionNational: "España — national",
+    rsBaLabel: "ha burnt so far in {year}",
+    rsAvgLabel: "ha burnt in an average year (2006–{prev})",
+    rsNfLabel: 'fires mapped in {year} · avg size <span id="rs-size">–</span> ha',
+    regionChartAria: "Burned area per year for the selected region",
+    regionFallback: "Regional statistics are unavailable right now — try again later.",
+    regionNote:
+      "Satellite-mapped burned area (MODIS, ≳30 ha) from the GWIS country profiles, aggregated to GADM regions. Figures differ from the national EGIF statistic; this dataset publishes comunidades, not provincias. Selecting a region also zooms the map.",
+    chartTitle: "Burned area per year",
+    chartMuted: "Spain · kha",
+    chartNote: "Approx. totals per EGIF/MITECO; 2025 provisional (EFFIS).",
+    viewTable: "View as table",
+    thYear: "Year",
+    thBa: "Burned area (ha, approx.)",
+    aboutTitle: "About Firewatcher",
+    aboutBody:
+      "An open-data wildfire dashboard for Spain: live fire danger, satellite fire detections and burnt areas from the Copernicus EFFIS services, with historical context from the national fire statistics.",
+    attribution:
+      'Fire danger, detections and burnt areas: © European Union, Copernicus Emergency Management Service — EFFIS. Contains modified Copernicus EMS information 2026. Historical statistics: MITECO / EGIF (approximate). Basemap: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, © <a href="https://carto.com/attributions">CARTO</a>.',
+    provisionalNote: " · provisional (EFFIS)",
+    natTooltip: "≈ {n} ha burned{note}",
+    natBarAria: "{year}: about {n} thousand hectares{note}",
+    natChartAria:
+      "Bar chart of annual burned area in Spain, 2005 to 2025, in thousand hectares",
+    provisionalRow: " (provisional)",
+    regTooltip: "{n} ha burned · {k} fires",
+    regBarAria: "{year}: {n} hectares, {k} fires",
+    regChartAria:
+      "Bar chart of annual satellite-mapped burned area in {name}, 2006 to {last}, in hectares",
+    langButton: "ES",
+    langButtonTitle: "Cambiar a español",
+    dateLocale: "en-GB",
+    numLocale: "en",
+  },
+  es: {
+    title: "Firewatcher — Panel de riesgo de incendios de España",
+    mapAria: "Mapa con capas de incendios en directo",
+    brandSub: "Panel de incendios forestales de España",
+    hidePanel: "Ocultar panel",
+    showPanel: "Mostrar panel",
+    todayTitle: "Hoy de un vistazo",
+    tsBaLabel: "ha quemadas en {year} (cartografía EFFIS)",
+    tsAvgLabel: "media a estas alturas del año, 2006–25",
+    tsNfLabel: "incendios ≥ ~30 ha cartografiados en {year}",
+    todayFallback:
+      'Totales de la temporada no disponibles — consulta el <a href="https://forest-fire.emergency.copernicus.eu/apps/effis.statistics/seasonaltrend">portal de estadísticas EFFIS</a> o el <a href="https://forest-fire.emergency.copernicus.eu/apps/effis.csv/">visor de situación</a>.',
+    chipSpain: "España",
+    chipIberia: "Iberia y Magreb",
+    btnToday: "↺ Volver a hoy",
+    layersTitle: "Capas en directo",
+    fwiName: "Previsión de peligro de incendio <small>FWI</small>",
+    fwiOpacityAria: "Opacidad de la capa de peligro",
+    dateLabel: "Fecha",
+    legendNote: "Muy bajo → extremo · clases FWI según EFFIS",
+    hsName: "Detecciones de fuego activo <small>VIIRS · MODIS · NOAA</small>",
+    baName: "Áreas quemadas <small>temporada actual</small>",
+    layersNote:
+      "Las capas cubren el dominio EFFIS — Europa, Oriente Medio y norte de África; muévete libremente. Las detecciones y perímetros tienen un umbral de cartografiado de ~30 ha y pueden ir con retraso. Vista analítica, no un servicio de emergencias.",
+    regionTitle: "Analítica regional",
+    regionMuted: "GWIS · área quemada MODIS",
+    regionSelectAria: "Elige una región",
+    regionNational: "España — nacional",
+    rsBaLabel: "ha quemadas en lo que va de {year}",
+    rsAvgLabel: "ha quemadas en un año medio (2006–{prev})",
+    rsNfLabel:
+      'incendios cartografiados en {year} · tamaño medio <span id="rs-size">–</span> ha',
+    regionChartAria: "Superficie quemada por año en la región seleccionada",
+    regionFallback:
+      "Las estadísticas regionales no están disponibles ahora mismo; inténtalo de nuevo más tarde.",
+    regionNote:
+      "Superficie quemada cartografiada por satélite (MODIS, ≳30 ha) de los perfiles de país de GWIS, agregada a regiones GADM. Las cifras difieren de la estadística nacional EGIF; esta fuente publica comunidades, no provincias. Al elegir una región, el mapa también hace zoom.",
+    chartTitle: "Superficie quemada por año",
+    chartMuted: "España · kha",
+    chartNote: "Totales aproximados según EGIF/MITECO; 2025 provisional (EFFIS).",
+    viewTable: "Ver como tabla",
+    thYear: "Año",
+    thBa: "Superficie quemada (ha, aprox.)",
+    aboutTitle: "Acerca de Firewatcher",
+    aboutBody:
+      "Un panel de datos abiertos sobre incendios forestales en España: peligro de incendio en directo, detecciones por satélite y áreas quemadas de los servicios Copernicus EFFIS, con contexto histórico de la estadística nacional de incendios.",
+    attribution:
+      'Peligro de incendio, detecciones y áreas quemadas: © Unión Europea, Servicio de Gestión de Emergencias de Copernicus — EFFIS. Contiene información modificada de Copernicus EMS 2026. Estadísticas históricas: MITECO / EGIF (aproximadas). Mapa base: © colaboradores de <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, © <a href="https://carto.com/attributions">CARTO</a>.',
+    provisionalNote: " · provisional (EFFIS)",
+    natTooltip: "≈ {n} ha quemadas{note}",
+    natBarAria: "{year}: unas {n} mil hectáreas{note}",
+    natChartAria:
+      "Gráfico de barras de la superficie anual quemada en España, 2005 a 2025, en miles de hectáreas",
+    provisionalRow: " (provisional)",
+    regTooltip: "{n} ha quemadas · {k} incendios",
+    regBarAria: "{year}: {n} hectáreas, {k} incendios",
+    regChartAria:
+      "Gráfico de barras de la superficie anual quemada cartografiada por satélite en {name}, 2006 a {last}, en hectáreas",
+    langButton: "EN",
+    langButtonTitle: "Switch to English",
+    dateLocale: "es-ES",
+    numLocale: "es-ES",
+  },
+};
+
+let lang = (() => {
+  const saved = localStorage.getItem("fw-lang");
+  if (saved === "en" || saved === "es") return saved;
+  return String(navigator.language || "").toLowerCase().startsWith("es") ? "es" : "en";
+})();
+
+function t(key, vars) {
+  let s = (I18N[lang] && I18N[lang][key]) ?? I18N.en[key] ?? key;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, v);
+  }
+  return s;
+}
+
+function fmtNum(n) {
+  return Math.round(n).toLocaleString(t("numLocale"));
+}
+
+// Re-applies every translatable string, then re-renders everything built from
+// cached data (charts, tables, stats) so tooltips and number formats follow.
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.title = t("title");
+  const vars = { year: today.getFullYear(), prev: today.getFullYear() - 1 };
+  for (const el of document.querySelectorAll("[data-i18n]")) {
+    el.innerHTML = t(el.dataset.i18n, vars);
+  }
+  for (const el of document.querySelectorAll("[data-i18n-aria]")) {
+    el.setAttribute("aria-label", t(el.dataset.i18nAria, vars));
+  }
+  const langBtn = document.getElementById("lang-toggle");
+  langBtn.textContent = t("langButton");
+  langBtn.title = t("langButtonTitle");
+
+  const panelHidden = document.getElementById("panel").classList.contains("hidden");
+  document.getElementById("panel-toggle").title = panelHidden ? t("showPanel") : t("hidePanel");
+
+  document.getElementById("today-date").textContent = today.toLocaleDateString(
+    t("dateLocale"),
+    { weekday: "long", day: "numeric", month: "long", year: "numeric" }
+  );
+  document.querySelector('#region-select option[value="ESP"]').textContent =
+    t("regionNational");
+
+  renderNationalChart();
+  if (seasonCache) renderSeasonStats(seasonCache);
+  if (regionCache) {
+    renderRegionStats(regionCache.years, today.getFullYear());
+    renderRegionChart(regionCache.years, regionCache.name);
+  }
+}
+
 /* ---------- map ---------- */
 
 function initMap() {
@@ -154,15 +335,6 @@ function setFwiDate(layer, dateStr) {
 /* ---------- today at a glance ---------- */
 
 function initToday(ctx) {
-  const now = new Date();
-  document.getElementById("today-date").textContent = now.toLocaleDateString(
-    "en-GB",
-    { weekday: "long", day: "numeric", month: "long", year: "numeric" }
-  );
-  for (const el of document.querySelectorAll(".ts-year")) {
-    el.textContent = String(now.getFullYear());
-  }
-
   const panel = document.getElementById("panel");
   const toggle = document.getElementById("panel-toggle");
   toggle.addEventListener("click", () => {
@@ -170,7 +342,7 @@ function initToday(ctx) {
     toggle.classList.toggle("panel-hidden-state", hidden);
     toggle.setAttribute("aria-expanded", String(!hidden));
     toggle.textContent = hidden ? "☰" : "✕";
-    toggle.title = hidden ? "Show panel" : "Hide panel";
+    toggle.title = hidden ? t("showPanel") : t("hidePanel");
   });
 
   for (const chip of document.querySelectorAll(".chip[data-view]")) {
@@ -199,6 +371,8 @@ function initToday(ctx) {
 // for the current year and *_avg is the 2006-onward climatology for the same
 // week. Year-to-date figures are the sums over weeks that have already ended;
 // entries with a future mddate are placeholders and must be ignored.
+let seasonCache = null;
+
 async function fetchSeasonStats() {
   const url =
     "https://api2.effis.emergency.copernicus.eu/statistics/v2/effis/weekly?country=ESP";
@@ -207,6 +381,7 @@ async function fetchSeasonStats() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const stats = sumWeeklyStats(await resp.json());
     if (stats) {
+      seasonCache = stats;
       renderSeasonStats(stats);
       return;
     }
@@ -237,10 +412,9 @@ function sumWeeklyStats(data) {
 }
 
 function renderSeasonStats({ ba, avg, nf }) {
-  const fmt = (n) => Math.round(n).toLocaleString("en");
-  document.getElementById("ts-ba").textContent = fmt(ba);
-  document.getElementById("ts-avg").textContent = avg === null ? "n/a" : fmt(avg);
-  document.getElementById("ts-nf").textContent = nf === null ? "n/a" : fmt(nf);
+  document.getElementById("ts-ba").textContent = fmtNum(ba);
+  document.getElementById("ts-avg").textContent = avg === null ? "n/a" : fmtNum(avg);
+  document.getElementById("ts-nf").textContent = nf === null ? "n/a" : fmtNum(nf);
   document.getElementById("today-stats").hidden = false;
 }
 
@@ -386,25 +560,27 @@ function barChart(host, points, opts) {
 
 function renderNationalChart() {
   const points = BURNED_KHA.map(([year, kha]) => {
-    const note = PROVISIONAL.has(year) ? " · provisional (EFFIS)" : "";
+    const note = PROVISIONAL.has(year) ? t("provisionalNote") : "";
+    const nhtml = t("natTooltip", { n: fmtNum(kha * 1000), note });
     return {
       label: year,
       value: kha,
-      html: `<span class="t-title">${year}</span><br><span class="t-value">≈ ${kha},000 ha burned${note}</span>`,
-      aria: `${year}: about ${kha} thousand hectares${note}`,
+      html: `<span class="t-title">${year}</span><br><span class="t-value">${nhtml}</span>`,
+      aria: t("natBarAria", { year, n: kha, note }),
     };
   });
   barChart(document.getElementById("chart"), points, {
     direct: DIRECT_LABELS,
     fmtTick: (v) => String(Math.round(v)),
-    aria: "Bar chart of annual burned area in Spain, 2005 to 2025, in thousand hectares",
+    aria: t("natChartAria"),
   });
 
   const tbody = document.querySelector("#chart-table-el tbody");
+  tbody.innerHTML = "";
   for (const [year, kha] of BURNED_KHA) {
     const tr = document.createElement("tr");
-    const suffix = PROVISIONAL.has(year) ? " (provisional)" : "";
-    tr.innerHTML = `<td>${year}${suffix}</td><td>≈ ${(kha * 1000).toLocaleString("en")}</td>`;
+    const suffix = PROVISIONAL.has(year) ? t("provisionalRow") : "";
+    tr.innerHTML = `<td>${year}${suffix}</td><td>≈ ${fmtNum(kha * 1000)}</td>`;
     tbody.appendChild(tr);
   }
 }
@@ -436,6 +612,8 @@ const REGIONS = [
   ["ESP.18_1", "Región de Murcia", [37.3, -2.4, 38.8, -0.6]],
 ];
 
+let regionCache = null;
+
 function initRegions(ctx) {
   const sel = document.getElementById("region-select");
   for (const [gid, name] of REGIONS) {
@@ -444,10 +622,6 @@ function initRegions(ctx) {
     opt.textContent = name;
     sel.appendChild(opt);
   }
-  for (const el of document.querySelectorAll(".rs-year")) {
-    el.textContent = String(today.getFullYear());
-  }
-  document.getElementById("rs-prev").textContent = String(today.getFullYear() - 1);
   sel.addEventListener("change", () => selectRegion(ctx, sel.value));
   selectRegion(null, "ESP");
 }
@@ -474,12 +648,14 @@ async function selectRegion(ctx, gid) {
       (d) => Number.isFinite(d.year) && Number.isFinite(d.ba_area_ha)
     );
     if (!years.length) throw new Error("empty banfyear");
+    regionCache = { years, name: region ? region[1] : "España" };
     renderRegionStats(years, year);
-    renderRegionChart(years, region ? region[1] : "Spain");
+    renderRegionChart(years, regionCache.name);
     stats.hidden = false;
     fallback.hidden = true;
   } catch (err) {
     console.error("regional stats unavailable:", err);
+    regionCache = null;
     stats.hidden = true;
     document.getElementById("region-chart").innerHTML = "";
     fallback.hidden = false;
@@ -487,17 +663,16 @@ async function selectRegion(ctx, gid) {
 }
 
 function renderRegionStats(years, currentYear) {
-  const fmt = (v) => Math.round(v).toLocaleString("en");
   const current = years.find((d) => d.year === currentYear);
   const past = years.filter((d) => d.year < currentYear);
   const avgBa = past.length
     ? past.reduce((a, d) => a + d.ba_area_ha, 0) / past.length
     : null;
-  document.getElementById("rs-ba").textContent = current ? fmt(current.ba_area_ha) : "0";
-  document.getElementById("rs-avg").textContent = avgBa === null ? "n/a" : fmt(avgBa);
-  document.getElementById("rs-nf").textContent = current ? fmt(current.ba_count || 0) : "0";
+  document.getElementById("rs-ba").textContent = current ? fmtNum(current.ba_area_ha) : "0";
+  document.getElementById("rs-avg").textContent = avgBa === null ? "n/a" : fmtNum(avgBa);
+  document.getElementById("rs-nf").textContent = current ? fmtNum(current.ba_count || 0) : "0";
   document.getElementById("rs-size").textContent =
-    current && current.firesize ? fmt(current.firesize) : "–";
+    current && current.firesize ? fmtNum(current.firesize) : "–";
 }
 
 function renderRegionChart(years, name) {
@@ -508,17 +683,17 @@ function renderRegionChart(years, name) {
   const points = years.map((d) => ({
     label: String(d.year),
     value: d.ba_area_ha,
-    html: `<span class="t-title">${d.year}</span><br><span class="t-value">${Math.round(d.ba_area_ha).toLocaleString("en")} ha burned · ${d.ba_count || 0} fires</span>`,
-    aria: `${d.year}: ${Math.round(d.ba_area_ha).toLocaleString("en")} hectares, ${d.ba_count || 0} fires`,
+    html: `<span class="t-title">${d.year}</span><br><span class="t-value">${t("regTooltip", { n: fmtNum(d.ba_area_ha), k: d.ba_count || 0 })}</span>`,
+    aria: t("regBarAria", { year: d.year, n: fmtNum(d.ba_area_ha), k: d.ba_count || 0 }),
   }));
   barChart(document.getElementById("region-chart"), points, {
     direct: peak ? new Set([String(peak.year)]) : new Set(),
     fmtTick,
-    aria: `Bar chart of annual satellite-mapped burned area in ${name}, 2006 to ${years[years.length - 1].year}, in hectares`,
+    aria: t("regChartAria", { name, last: years[years.length - 1].year }),
   });
 }
 
-renderNationalChart();
+/* ---------- boot ---------- */
 
 let mapCtx = null;
 try {
@@ -528,3 +703,10 @@ try {
 }
 initToday(mapCtx);
 initRegions(mapCtx);
+applyLang();
+
+document.getElementById("lang-toggle").addEventListener("click", () => {
+  lang = lang === "es" ? "en" : "es";
+  localStorage.setItem("fw-lang", lang);
+  applyLang();
+});
