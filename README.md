@@ -1,14 +1,20 @@
 # Firewatcher
 
-Design document and site for a **wildfire risk & prevention analytics platform for Spain**, built entirely on open data (EGIF, EFFIS, Copernicus, AEMET, PNOA-LiDAR, Catastro, INE).
+An interactive **wildfire risk dashboard for Spain**, published on GitHub Pages, plus the design document for the full open-data analytics platform behind it (EGIF, EFFIS, Copernicus, AEMET, PNOA-LiDAR, Catastro, INE).
 
-The design document is the source of truth: [`docs/design.md`](docs/design.md). It is published as a GitHub Pages site, rendered by a small build script.
+**Live site:** https://alpibrusl.github.io/firewatcher/
 
-## Site
+## What's on the site
 
-- **Source:** `docs/design.md`
-- **Build:** `scripts/build_site.py` renders the markdown into `_site/` using the shell in `web/` (template + styles)
-- **Deploy:** `.github/workflows/deploy-pages.yml` builds and publishes to GitHub Pages on every push to the default branch
+- **`/` — the dashboard.** A static, client-side web app: Leaflet map of Spain with live layers from the Copernicus EFFIS WMS (fire-danger forecast with a date picker, VIIRS/MODIS active-fire detections, current-season burnt areas), headline statistics, and a chart of annual burned area 2005–2025.
+- **`/design/` — the design document.** The full platform design ([`docs/design.md`](docs/design.md)) rendered as a styled page.
+
+The dashboard needs no backend: map layers are drawn live by the public EFFIS WMS in the visitor's browser, and everything else is static.
+
+## Build and deploy
+
+- **Build:** `scripts/build_site.py` copies the app from `app/` into `_site/` and renders `docs/design.md` into `_site/design/` using the shell in `web/`
+- **Deploy:** `.github/workflows/deploy-pages.yml` builds on every push to the default branch and publishes `_site/` to the `gh-pages` branch, which GitHub Pages serves
 
 ### Build locally
 
@@ -21,11 +27,18 @@ python scripts/build_site.py
 ## Repository layout
 
 ```
-docs/design.md          # the design document (source of truth)
-web/                    # HTML template and stylesheet for the site
-scripts/build_site.py   # markdown -> _site/ renderer
+app/                    # the dashboard (static web app; Leaflet vendored)
+docs/design.md          # the platform design document (source of truth)
+web/                    # HTML template and stylesheet for the rendered doc
+scripts/build_site.py   # builds everything into _site/
 .github/workflows/      # GitHub Pages deployment
 ```
+
+## Data sources & attribution
+
+- Fire danger, active-fire detections and burnt areas: © European Union, Copernicus Emergency Management Service — [EFFIS](https://forest-fire.emergency.copernicus.eu/). Contains modified Copernicus Emergency Management Service information 2026.
+- Historical fire statistics: [MITECO / EGIF](https://www.miteco.gob.es/en/biodiversidad/temas/incendios-forestales/estadisticas-datos.html) (approximate figures; 2025 provisional per EFFIS mapping).
+- Basemap: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, © [CARTO](https://carto.com/attributions).
 
 ## What the platform is (short version)
 

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firewatcher — Spain Wildfire Risk Dashboard</title>
+<meta name="description" content="Interactive wildfire risk dashboard for Spain: live fire danger (FWI), active fire detections and burnt areas from Copernicus EFFIS, with historical context from the national fire record.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔥</text></svg>">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="brand"><span class="flame">🔥</span> Firewatcher</span>
+  <span class="subtitle">Spain wildfire risk dashboard</span>
+  <nav>
+    <a href="design/">Design document</a>
+    <a href="https://github.com/alpibrusl/firewatcher">GitHub</a>
+  </nav>
+</header>
+
+<div class="app">
+  <aside class="panel">
+    <p class="intro">Live fire danger, active fire detections and burnt-area
+    perimeters for Spain, streamed from the Copernicus
+    <abbr title="European Forest Fire Information System">EFFIS</abbr> services —
+    the public face of the <a href="design/">Firewatcher platform design</a>.</p>
+
+    <section class="controls" aria-label="Map layers">
+      <h2>Map layers</h2>
+
+      <div class="layer-row">
+        <label><input type="checkbox" id="lyr-fwi" checked> Fire danger forecast (FWI)</label>
+        <input type="range" id="fwi-opacity" min="10" max="100" value="55"
+               aria-label="Fire danger layer opacity">
+      </div>
+      <div class="layer-sub">
+        <label for="fwi-date">Forecast date</label>
+        <input type="date" id="fwi-date">
+      </div>
+      <div class="legend" aria-label="Fire danger classes (FWI thresholds per EFFIS)">
+        <span class="legend-title">Danger classes — FWI thresholds (EFFIS)</span>
+        <div class="legend-row"><i style="background:#5faf4e"></i> Very low &lt; 5.2</div>
+        <div class="legend-row"><i style="background:#d9e14f"></i> Low 5.2–11.2</div>
+        <div class="legend-row"><i style="background:#efb138"></i> Moderate 11.2–21.3</div>
+        <div class="legend-row"><i style="background:#e2601f"></i> High 21.3–38.0</div>
+        <div class="legend-row"><i style="background:#b81e1e"></i> Very high 38.0–50.0</div>
+        <div class="legend-row"><i style="background:#571212"></i> Extreme ≥ 50.0</div>
+        <span class="legend-note">Swatches approximate the EFFIS map legend.</span>
+      </div>
+
+      <div class="layer-row">
+        <label><input type="checkbox" id="lyr-hs" checked> Active fire detections (VIIRS/MODIS)</label>
+      </div>
+      <div class="layer-row">
+        <label><input type="checkbox" id="lyr-ba" checked> Burnt areas, current season (EFFIS)</label>
+      </div>
+      <p class="control-note">Layers are rendered live by the EFFIS WMS. Detections
+      and perimeters have a ~30 ha mapping floor and can lag reality; this is an
+      analytical view, not an emergency service.</p>
+    </section>
+
+    <section class="stats" aria-label="Headline statistics">
+      <div class="tile">
+        <span class="tile-value">8.18M ha</span>
+        <span class="tile-label">burned in Spain 1968–2023</span>
+      </div>
+      <div class="tile">
+        <span class="tile-value">641,751</span>
+        <span class="tile-label">recorded fires 1968–2023</span>
+      </div>
+    </section>
+
+    <section class="chart-card" aria-label="Annual burned area in Spain">
+      <h2>Burned area per year — Spain</h2>
+      <p class="chart-sub">Thousand hectares, 2005–2025. Approximate totals from
+      the national statistic (EGIF/MITECO); 2025 provisional per EFFIS mapping.</p>
+      <div id="chart" class="chart"></div>
+      <details class="chart-table">
+        <summary>View as table</summary>
+        <table id="chart-table-el">
+          <thead><tr><th scope="col">Year</th><th scope="col">Burned area (ha, approx.)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </details>
+    </section>
+
+    <section class="about" aria-label="About the platform">
+      <h2>The platform behind this page</h2>
+      <p>Firewatcher is a design for an open-data wildfire analytics platform for
+      Spain. Its six products:</p>
+      <ul class="products">
+        <li><b>P1</b> Harmonised fire record, 1968–present (EGIF ⇄ EFFIS)</li>
+        <li><b>P2</b> Daily fire-danger reanalysis, 1 km, 1980–present</li>
+        <li><b>P3</b> 25 m fuel &amp; structure layer from PNOA-LiDAR + MFE</li>
+        <li><b>P4</b> Calibrated daily ignition-hazard model</li>
+        <li><b>P5</b> Monte Carlo burn probability &amp; exposure</li>
+        <li><b>P6</b> Fuel-treatment placement optimiser</li>
+      </ul>
+      <p><a href="design/">Read the full design document →</a></p>
+    </section>
+
+    <footer class="attribution">
+      <p>Fire danger, detections and burnt areas: © European Union,
+      Copernicus Emergency Management Service — EFFIS. Contains modified
+      Copernicus Emergency Management Service information 2026.</p>
+      <p>Historical statistics: MITECO / EGIF (approximate). Basemap:
+      © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>
+      contributors, © <a href="https://carto.com/attributions">CARTO</a>.</p>
+    </footer>
+  </aside>
+
+  <div id="map" role="application" aria-label="Map of Spain with wildfire layers"></div>
+</div>
+
+<div id="tooltip" class="tooltip" hidden></div>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

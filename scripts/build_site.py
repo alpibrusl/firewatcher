@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Render docs/design.md into a static site under _site/.
+"""Build the static site under _site/: the dashboard app at the root plus
+docs/design.md rendered under _site/design/.
 
 Usage: python scripts/build_site.py
 Requires: pip install markdown
@@ -16,7 +17,9 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "docs" / "design.md"
 TEMPLATE = ROOT / "web" / "template.html"
 STYLES = ROOT / "web" / "styles.css"
+APP_DIR = ROOT / "app"
 OUT_DIR = ROOT / "_site"
+DOC_DIR = OUT_DIR / "design"
 
 
 def split_front_matter(text: str) -> tuple[str, str]:
@@ -79,10 +82,13 @@ def main() -> None:
         .replace("$UPDATED$", updated)
     )
 
-    OUT_DIR.mkdir(exist_ok=True)
-    (OUT_DIR / "index.html").write_text(page, encoding="utf-8")
-    shutil.copy(STYLES, OUT_DIR / "styles.css")
-    print(f"built {OUT_DIR / 'index.html'} ({len(page):,} bytes)")
+    if OUT_DIR.exists():
+        shutil.rmtree(OUT_DIR)
+    shutil.copytree(APP_DIR, OUT_DIR)
+    DOC_DIR.mkdir()
+    (DOC_DIR / "index.html").write_text(page, encoding="utf-8")
+    shutil.copy(STYLES, DOC_DIR / "styles.css")
+    print(f"built dashboard + {DOC_DIR / 'index.html'} ({len(page):,} bytes)")
 
 
 if __name__ == "__main__":
