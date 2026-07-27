@@ -13,14 +13,18 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
+      - name: Install pillow
+        run: pip install pillow
       - name: Compare tile sizes and combined layers
         run: |
           getmap () {
             name="$1"; layers="$2"; size="$3"; bbox="$4"
-            url="https://maps.effis.emergency.copernicus.eu/effis?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=${layers}&SRS=EPSG:3857&BBOX=${bbox}&WIDTH=${size}&HEIGHT=${size}&FORMAT=image%2Fpng&TRANSPARENT=true"
-            out=$(curl -sS -m 30 -o "${name}.png" -w "%{http_code} %{time_total}s %{size_download}B %{content_type}" "$url" || echo "curl-error")
+            url="https://maps.effis.emergency.copernicus.eu/effis?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=${layers}&STYLES=&SRS=EPSG%3A3857&BBOX=${bbox}&WIDTH=${size}&HEIGHT=${size}&FORMAT=image%2Fpng&TRANSPARENT=TRUE"
+            out=$(curl -sS -m 60 -o "${name}.png" -w "%{http_code} %{time_total}s %{size_download}B %{content_type}" "$url" || echo "curl-error")
             echo "${name}: ${out}"
-            file "${name}.png" | sed "s/^/${name}: /"
+            if file "${name}.png" 2>/dev/null | grep -q XML; then
+              echo "--- server exception body:"; cat "${name}.png"; echo
+            fi
           }
           # z6-ish tile over NW Spain (Galicia/León, active fire country)
           B1="-1252344.27,4383204.95,-626172.13,5009377.09"
