@@ -1,0 +1,29 @@
+name: Probe EFFIS stats API
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/probe-stats.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query candidate endpoints
+        run: |
+          year=$(date -u +%Y)
+          for url in \
+            "https://api2.effis.emergency.copernicus.eu/api/effis/seasonaltrend/ESP/${year}" \
+            "https://api2.effis.emergency.copernicus.eu/api/effis/seasonaltrend/json/ESP/${year}" \
+            "https://api2.effis.emergency.copernicus.eu/api/effis/seasonaltrend/ESP/${year}/BA" \
+            "https://api2.effis.emergency.copernicus.eu/statistics/v2/effis/seasonaltrend?country=ESP&year=${year}" \
+            "https://api2.effis.emergency.copernicus.eu/api/gwis/seasonaltrend/ESP/${year}" ; do
+            echo "================ ${url}"
+            curl -sS -m 20 -H "Origin: https://alpibrusl.github.io" -D - "$url" 2>&1 | head -c 4000 || true
+            echo
+            echo
+          done
