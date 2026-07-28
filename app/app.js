@@ -911,7 +911,9 @@ async function renderOutlook(gid) {
   const rc = regClimateSnapshot && regClimateSnapshot.regions;
   const year = today.getFullYear();
   const climKeys = m ? m.numeric_features.slice(0, -1) : [];
-  const targets = gid === "ESP" ? (m ? m.regions : []) : [gid];
+  // Per-comunidad model only: aggregating log-scale regional medians into a
+  // national figure understates skewed totals and would mislead.
+  const targets = gid === "ESP" ? [] : [gid];
 
   const usable =
     m && rc && banfSnapshot && targets.length &&
