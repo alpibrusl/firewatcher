@@ -49,7 +49,16 @@ REGIONS = {
     "ESP.18_1": "Región de Murcia",
 }
 
-EUROSTAT = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/agr_r_animal"
+EUROSTAT_BASE = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data"
+# agr_r_animal was withdrawn from dissemination; its summary-table successor
+# tgs00045 carries NUTS2 animal populations from 2014, and the national
+# apro_mt_ls* surveys cover 2005 onwards.
+EUROSTAT_REGIONAL = f"{EUROSTAT_BASE}/tgs00045"
+EUROSTAT_NATIONAL = [
+    (f"{EUROSTAT_BASE}/apro_mt_lssheep", "A4100"),
+    (f"{EUROSTAT_BASE}/apro_mt_lsgoat", "A4200"),
+]
+SHEEP_GOATS = {"A4100", "A4200"}
 
 # GADM admin-1 -> Eurostat NUTS2 (Ceuta y Melilla are two NUTS2 codes).
 GID_TO_NUTS2 = {
@@ -257,30 +266,16 @@ def jsonstat_cells(data):
 
 
 def etl_livestock() -> None:
-    geos = sorted({g for pair in GID_TO_NUTS2.values() for g in pair} | {"ES"})
+    # Regional: tgs00045 (annual NUTS2 animal populations, 2014 onwards).
+    geos = sorted({g for pair in GID_TO_NUTS2.values() for g in pair})
     geo_q = "&".join(f"geo={g}" for g in geos)
-    url = f"{EUROSTAT}?format=JSON&lang=EN&unit=THS_HD&sinceTimePeriod=2005&{geo_q}"
+    url = f"{EUROSTAT_REGIONAL}?format=JSON&lang=EN&unit=THS_HD&{geo_q}"
     data = get_json(url, timeout=120)
-
-    labels = data["dimension"]["animals"]["category"]["label"]
-    print("eurostat animals codes:", json.dumps(labels, ensure_ascii=False))
-    wanted = {
-        code
-        for code, label in labels.items()
-        if "sheep" in label.lower() or "goat" in label.lower()
-    }
-    if not wanted:
-        raise RuntimeError("no sheep/goat codes found in agr_r_animal")
-
-    # (geo, year) -> thousand head, summed over sheep + goats
     totals: dict[tuple[str, int], float] = {}
     for coords, value in jsonstat_cells(data):
-        if coords.get("animals") not in wanted:
+        if coords.get("animals") not in SHEEP_GOATS:
             continue
-        year = int(coords["time"])
-        if year < 2005:
-            continue
-        key = (coords["geo"], year)
+        key = (coords["geo"], int(coords["time"]))
         totals[key] = totals.get(key, 0.0) + value
 
     def series_for(nuts_list):
@@ -295,17 +290,31 @@ def etl_livestock() -> None:
     series = {}
     for gid, nuts in GID_TO_NUTS2.items():
         s = series_for(nuts)
-        if s:
+        if len(s) >= 5:
             series[gid] = {"name": REGIONS[gid], "years": s}
-    national = series_for(["ES"])
-    if not national or len(series) < 15:
+
+    # National: apro_mt_ls* surveys, 2005 onwards. The November-December
+    # survey is the reference census; sum sheep + goats across datasets.
+    nat: dict[int, float] = {}
+    for url, code in EUROSTAT_NATIONAL:
+        q = f"{url}?format=JSON&lang=EN&unit=THS_HD&geo=ES&month=M11_M12&animals={code}&sinceTimePeriod=2005"
+        data = get_json(q, timeout=60)
+        for coords, value in jsonstat_cells(data):
+            year = int(coords["time"])
+            nat[year] = nat.get(year, 0.0) + value
+        time.sleep(0.5)
+    national = [
+        {"year": y, "ths_head": round(v, 1)} for y, v in sorted(nat.items())
+    ]
+
+    if len(national) < 10 or len(series) < 15:
         raise RuntimeError(
             f"livestock series incomplete: national={len(national)} regions={len(series)}"
         )
     series["ESP"] = {"name": "España", "years": national}
     write("livestock-esp.json", {
         "unit": "thousand head, sheep + goats",
-        "source": "Eurostat agr_r_animal (NUTS2)",
+        "source": "Eurostat tgs00045 (NUTS2, from 2014) + apro_mt_lssheep/lsgoat (national, from 2005)",
         "series": series,
     })
 

@@ -66,7 +66,7 @@ const I18N = {
     lsTooltip: "≈ {n} head",
     lsChartAria: "Sheep and goat herd per year for the selected region, thousand head",
     lsNote:
-      "Extensive sheep and goat grazing removes fine fuel from the landscape; the herd's decline is one hypothesis behind worsening fire seasons. Source: Eurostat (agr_r_animal), thousand head.",
+      "Extensive sheep and goat grazing removes fine fuel from the landscape; the herd's decline is one hypothesis behind worsening fire seasons. Source: Eurostat (tgs00045 regional from 2014; apro_mt_ls* national from 2005), thousand head.",
     climateTitle: "Climate &amp; fire",
     climateChipsAria: "Choose a climate variable",
     cmSpring: "Spring rain",
@@ -167,7 +167,7 @@ const I18N = {
     lsTooltip: "≈ {n} cabezas",
     lsChartAria: "Cabaña ovina y caprina por año en la región seleccionada, en miles de cabezas",
     lsNote:
-      "El pastoreo extensivo de ovino y caprino retira combustible fino del monte; el declive de la cabaña es una de las hipótesis del empeoramiento de los incendios. Fuente: Eurostat (agr_r_animal), miles de cabezas.",
+      "El pastoreo extensivo de ovino y caprino retira combustible fino del monte; el declive de la cabaña es una de las hipótesis del empeoramiento de los incendios. Fuente: Eurostat (tgs00045 regional desde 2014; apro_mt_ls* nacional desde 2005), miles de cabezas.",
     climateTitle: "Clima y fuego",
     climateChipsAria: "Elige una variable climática",
     cmSpring: "Lluvia de primavera",
