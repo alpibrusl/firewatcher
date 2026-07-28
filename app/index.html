@@ -90,6 +90,16 @@
         <span class="layer-name" data-i18n="hsName">Active fire detections <small>VIIRS · MODIS · NOAA</small></span>
       </label>
     </div>
+    <div class="legend sym-legend" aria-hidden="false">
+      <span class="legend-note" data-i18n="hsLegTitle">Colour = detection age · shape = satellite (&#9660;&#9650; MODIS, &#9632;&#9670; VIIRS)</span>
+      <ul class="sym-list">
+        <li><i class="sym" style="background:#e040d0"></i><span data-i18n="hsLeg1">&le; 6 h (MODIS)</span></li>
+        <li><i class="sym" style="background:#ff8c1a"></i><span data-i18n="hsLeg2">6&ndash;12 h (MODIS) &middot; &le; 7 days (VIIRS)</span></li>
+        <li><i class="sym" style="background:#e53935"></i><span data-i18n="hsLeg3">&le; 24 h</span></li>
+        <li><i class="sym" style="background:#1e90ff"></i><span data-i18n="hsLeg4">7&ndash;30 days ago</span></li>
+        <li><i class="sym" style="background:#2ec72e"></i><span data-i18n="hsLeg5">earlier this season</span></li>
+      </ul>
+    </div>
 
     <div class="layer">
       <label class="switch">
@@ -97,6 +107,15 @@
         <span class="track" aria-hidden="true"></span>
         <span class="layer-name" data-i18n="baName">Burnt areas <small>current season</small></span>
       </label>
+    </div>
+    <div class="legend sym-legend" aria-hidden="false">
+      <span class="legend-note" data-i18n="baLegTitle">Perimeter colour = when the area was mapped</span>
+      <ul class="sym-list">
+        <li><i class="sym sq" style="background:#800000"></i><span data-i18n="baLeg1">last day</span></li>
+        <li><i class="sym sq" style="background:#c07f00"></i><span data-i18n="baLeg2">last 7 days</span></li>
+        <li><i class="sym sq" style="background:#1e90c0"></i><span data-i18n="baLeg3">last 30 days</span></li>
+        <li><i class="sym sq" style="background:#10a010"></i><span data-i18n="baLeg4">whole season</span></li>
+      </ul>
     </div>
 
     <p class="note" data-i18n="layersNote">Layers cover the EFFIS domain — Europe, Middle East and
