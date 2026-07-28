@@ -7,6 +7,7 @@ on:
   push:
     paths:
       - "scripts/etl.py"
+      - "scripts/train_model.py"
       - ".github/workflows/etl.yml"
 
 permissions:
@@ -32,11 +33,12 @@ jobs:
           python-version: "3.12"
       - name: Fetch snapshots
         run: python scripts/etl.py
-      - name: Train season-outlook model
+      - name: Train season-outlook models
+        # Non-fatal: a training failure must not discard the fetched snapshots.
         run: |
           pip install --quiet numpy
           if [ -f app/data/climate-regions-esp.json ]; then
-            python scripts/train_model.py
+            python scripts/train_model.py || echo "WARN training failed; committing data anyway"
           else
             echo "no regional climate yet; skipping training"
           fi

@@ -67,6 +67,7 @@ const I18N = {
     olInputsPartial: "Inputs: {year} climate with the summer observed to date — the range narrows as the season closes.",
     olInputsFull: "Inputs: complete {year} seasonal climate.",
     olQuality: "Quality: leave-one-year-out R² = {r2} on the log scale; typical error ×{factor}.",
+    olMonthLabel: "ha predicted for {month} (80 % range; monthly model with lags, summer R² = {r2})",
     olNote:
       'Ridge regression on comunidad-year data (2007 onwards): regional seasonal climate, recent burn history and region effects, validated leave-one-year-out. <span id="ol-quality"></span> Experimental — wide ranges are honest for fire data; this is context, not an operational forecast.',
     lsTitle: "Sheep &amp; goat herd",
@@ -176,6 +177,7 @@ const I18N = {
     olInputsPartial: "Entradas: clima de {year} con el verano observado hasta la fecha — el rango se estrecha al cerrar la temporada.",
     olInputsFull: "Entradas: clima estacional completo de {year}.",
     olQuality: "Calidad: R² = {r2} en escala logarítmica con validación dejando fuera cada año; error típico ×{factor}.",
+    olMonthLabel: "ha previstas para {month} (rango 80 %; modelo mensual con lags, R² de verano = {r2})",
     olNote:
       'Regresión ridge sobre datos comunidad-año (desde 2007): clima estacional regional, historial reciente de incendios y efectos regionales, validada dejando fuera un año cada vez. <span id="ol-quality"></span> Experimental — los rangos anchos son lo honesto con datos de incendios; es contexto, no una predicción operativa.',
     lsTitle: "Cabaña ovina y caprina",
@@ -771,6 +773,11 @@ async function selectRegion(ctx, gid) {
       const years = (await source()).filter(
         (d) => Number.isFinite(d.year) && Number.isFinite(d.ba_area_ha)
       );
+      // GWIS consolidates with a lag: trailing all-zero years are pending,
+      // not fire-free — drop them so charts and averages stay truthful.
+      while (years.length > 5 && !(years[years.length - 1].ba_area_ha > 0)) {
+        years.pop();
+      }
       if (!years.length) throw new Error("empty banfyear");
       regionCache = { years, name: region ? region[1] : "España" };
       renderRegionStats(years, year);
@@ -960,6 +967,79 @@ async function renderOutlook(gid) {
       factor: m.cv_mae_factor.toLocaleString(t("numLocale")),
     });
   }
+
+  renderOutlookMonth(gid);
+}
+
+let monthlyModel;
+let monthlyClimate;
+let monthlyBa;
+
+function backMonth(y, m, k) {
+  let mm = m - k;
+  let yy = y;
+  while (mm < 1) {
+    mm += 12;
+    yy -= 1;
+  }
+  return [yy, mm];
+}
+
+// Nowcast of the current month for the selected comunidad: the month's own
+// (partial) climate plus lagged climate and burned-area history.
+async function renderOutlookMonth(gid) {
+  const stat = document.getElementById("ol-month-stat");
+  if (monthlyModel === undefined) {
+    [monthlyModel, monthlyClimate, monthlyBa] = await Promise.all([
+      fetchJSON("data/model-monthly-esp.json", 8000).catch(() => null),
+      fetchJSON("data/climate-monthly-esp.json", 8000).catch(() => null),
+      fetchJSON("data/gwis-monthly-esp.json", 8000).catch(() => null),
+    ]);
+  }
+  if (outlookGid !== gid) return;
+  const mm = monthlyModel;
+  const rc = monthlyClimate && monthlyClimate.regions && monthlyClimate.regions[gid];
+  const rb = monthlyBa && monthlyBa.series && monthlyBa.series[gid];
+  const y = today.getFullYear();
+  const mo = today.getMonth() + 1;
+  if (!mm || !rc || !rb || !mm.regions.includes(gid)) {
+    stat.hidden = true;
+    return;
+  }
+  const climAt = new Map(rc.months.map((r) => [`${r.year}-${r.month}`, r]));
+  const baAt = new Map(rb.months.map((r) => [`${r.year}-${r.month}`, r.ba_area_ha || 0]));
+  const c = climAt.get(`${y}-${mo}`);
+  const lag = (k) => climAt.get(backMonth(y, mo, k).join("-"));
+  const lags = [lag(1), lag(2), lag(3), lag(4)];
+  if (!c || lags.some((v) => !v || v.partial)) {
+    stat.hidden = true;
+    return;
+  }
+  const ba12 = Array.from({ length: 12 }, (_, i) =>
+    baAt.get(backMonth(y, mo, i + 1).join("-")) || 0
+  ).reduce((a, b) => a + b, 0);
+  const feats = [
+    c.precip, c.tmax, c.wind,
+    lags[0].precip, lags[0].tmax,
+    lags[1].precip + lags[2].precip + lags[3].precip,
+    Math.log1p(baAt.get(backMonth(y, mo, 1).join("-")) || 0),
+    Math.log1p(baAt.get(backMonth(y, mo, 12).join("-")) || 0),
+    Math.log1p(ba12),
+  ];
+  let z = mm.intercept + mm.coef_month[mo - 1] + mm.coef_region[mm.regions.indexOf(gid)];
+  mm.numeric_features.forEach((k, i) => {
+    z += mm.coef_numeric[i] * ((feats[i] - mm.mean[i]) / mm.std[i]);
+  });
+  const monthName = new Date(y, mo - 1, 15).toLocaleDateString(t("dateLocale"), {
+    month: "long",
+  });
+  stat.hidden = false;
+  document.getElementById("ol-mrange").textContent =
+    `${fmtNum(Math.max(0, Math.expm1(z + mm.resid_q10)))} – ${fmtNum(Math.expm1(z + mm.resid_q90))}`;
+  document.getElementById("ol-mlabel").textContent = t("olMonthLabel", {
+    month: monthName,
+    r2: mm.cv_r2_log_summer.toLocaleString(t("numLocale")),
+  });
 }
 
 /* ---------- climate & fire correlation ---------- */

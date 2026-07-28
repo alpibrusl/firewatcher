@@ -163,6 +163,51 @@ def etl_gwis_banf() -> None:
     write("gwis-banf.json", {"series": series})
 
 
+def etl_gwis_monthly() -> None:
+    """Monthly burned area per comunidad (banf?frequency=monthly)."""
+    current = date.today().year
+    existing = load_existing("gwis-monthly-esp.json", "series") or {}
+    series = {}
+    for gid, name in REGIONS.items():
+        if gid == "ESP":
+            continue
+        prior = (existing.get(gid) or {}).get("months", [])
+        # Consolidation lags: refetch the current and previous year.
+        keep = [m for m in prior if m["year"] < current - 1]
+        have_years = {m["year"] for m in keep}
+        start_year = 2006 if not keep else current - 1
+        months = list(keep)
+        got_any = False
+        for year in range(start_year, current + 1):
+            if year in have_years:
+                continue
+            url = (
+                f"{CPROF}/banf?level=ADM1&value={gid}&year={year}"
+                f"&frequency=monthly&env=PROD"
+            )
+            try:
+                data = get_json(url)
+            except Exception as exc:  # noqa: BLE001 - keep what we have
+                print(f"WARN gwis monthly {gid} {year} failed: {exc}")
+                continue
+            for m in data.get("banfmonth", []):
+                if m.get("year") == year and isinstance(m.get("month"), int):
+                    months.append({
+                        "year": year,
+                        "month": m["month"],
+                        "ba_area_ha": round(float(m.get("ba_area_ha") or 0.0), 1),
+                        "ba_count": int(m.get("ba_count") or 0),
+                    })
+                    got_any = True
+            time.sleep(0.2)
+        if months and (got_any or keep):
+            months.sort(key=lambda m: (m["year"], m["month"]))
+            series[gid] = {"name": name, "months": months}
+    if len(series) < 14:
+        raise RuntimeError(f"gwis monthly: only {len(series)} regions built")
+    write("gwis-monthly-esp.json", {"series": series})
+
+
 def season_slices(year: int):
     return {
         "spring_precip": (date(year, 3, 1), date(year, 5, 31), "precipitation_sum", "sum"),
@@ -275,15 +320,49 @@ def etl_climate() -> None:
     })
 
 
+def monthly_rows(per_day, from_year: int, end: date) -> list[dict]:
+    """Aggregate the daily point-means to calendar months."""
+    acc: dict[tuple[int, int], dict[str, list[float]]] = {}
+    for day, vals in per_day.items():
+        y, m = int(day[:4]), int(day[5:7])
+        if y < from_year:
+            continue
+        bucket = acc.setdefault((y, m), {})
+        for var, v in vals.items():
+            bucket.setdefault(var, []).append(v)
+    rows = []
+    for (y, m), bucket in sorted(acc.items()):
+        row = {"year": y, "month": m}
+        p = bucket.get("precipitation_sum")
+        t = bucket.get("temperature_2m_max")
+        w = bucket.get("wind_speed_10m_max")
+        if p:
+            row["precip"] = round(sum(p), 1)
+        if t:
+            row["tmax"] = round(sum(t) / len(t), 1)
+        if w:
+            row["wind"] = round(sum(w) / len(w), 1)
+        last_dom = (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)).day
+        if date(y, m, last_dom) > end:
+            row["partial"] = True
+        rows.append(row)
+    return rows
+
+
 def etl_climate_regions() -> None:
     end = date.today() - timedelta(days=7)
     existing = load_existing("climate-regions-esp.json", "regions") or {}
+    existing_monthly = load_existing("climate-monthly-esp.json", "regions") or {}
     regions_out = {}
+    monthly_out = {}
     for gid, points in REGION_POINTS.items():
         prior = (existing.get(gid) or {}).get("years", [])
         from_year, keep = (
             incremental_bounds(prior, end) if prior else (CLIMATE_START_YEAR, [])
         )
+        if not (existing_monthly.get(gid) or {}).get("months"):
+            # The monthly series needs the full window once.
+            from_year, keep = CLIMATE_START_YEAR, []
         start = date(from_year - 1, 10, 1)
         try:
             per_day, _ = fetch_daily_means(points, start, end, min_points=1)
@@ -291,16 +370,34 @@ def etl_climate_regions() -> None:
             print(f"WARN climate region {gid} failed: {exc}")
             if prior:
                 regions_out[gid] = existing[gid]
+            if existing_monthly.get(gid):
+                monthly_out[gid] = existing_monthly[gid]
             continue
         regions_out[gid] = {
             "name": REGIONS[gid],
             "years": keep + seasonal_rows(per_day, from_year, end),
         }
+        prior_months = [
+            m
+            for m in (existing_monthly.get(gid) or {}).get("months", [])
+            if m["year"] < from_year - 1 or (m["year"] == from_year - 1 and not m.get("partial"))
+        ]
+        fresh_from = from_year - 1 if not prior_months else from_year
+        fresh = [
+            m
+            for m in monthly_rows(per_day, fresh_from, end)
+            if not any(p["year"] == m["year"] and p["month"] == m["month"] for p in prior_months)
+        ]
+        monthly_out[gid] = {"name": REGIONS[gid], "months": prior_months + fresh}
     if len(regions_out) < 14:
         raise RuntimeError(f"only {len(regions_out)}/17 climate regions built")
     write("climate-regions-esp.json", {
         "source": "ERA5 via Open-Meteo archive API, per-comunidad sample points",
         "regions": regions_out,
+    })
+    write("climate-monthly-esp.json", {
+        "source": "ERA5 via Open-Meteo archive API, per-comunidad sample points",
+        "regions": monthly_out,
     })
 
 
@@ -383,13 +480,13 @@ def etl_livestock() -> None:
 
 def main() -> None:
     failures = []
-    for step in (etl_effis_weekly, etl_gwis_banf, etl_climate, etl_climate_regions, etl_livestock):
+    for step in (etl_effis_weekly, etl_gwis_banf, etl_gwis_monthly, etl_climate, etl_climate_regions, etl_livestock):
         try:
             step()
         except Exception as exc:  # noqa: BLE001 - a partial refresh beats none
             failures.append(f"{step.__name__}: {exc}")
             print(f"WARN {step.__name__} failed: {exc}")
-    if len(failures) >= 4:
+    if len(failures) >= 5:
         raise SystemExit("all ETL steps failed:\n" + "\n".join(failures))
 
 
