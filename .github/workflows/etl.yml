@@ -35,5 +35,7 @@ jobs:
             echo "no data changes"
           else
             git commit -m "ETL: refresh data snapshots"
+            # The branch may have moved while snapshots were downloading.
+            git pull --rebase origin "${GITHUB_REF_NAME}"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
