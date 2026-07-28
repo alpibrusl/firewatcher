@@ -773,6 +773,11 @@ async function selectRegion(ctx, gid) {
       const years = (await source()).filter(
         (d) => Number.isFinite(d.year) && Number.isFinite(d.ba_area_ha)
       );
+      // GWIS consolidates with a lag: trailing all-zero years are pending,
+      // not fire-free — drop them so charts and averages stay truthful.
+      while (years.length > 5 && !(years[years.length - 1].ba_area_ha > 0)) {
+        years.pop();
+      }
       if (!years.length) throw new Error("empty banfyear");
       regionCache = { years, name: region ? region[1] : "España" };
       renderRegionStats(years, year);

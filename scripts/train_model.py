@@ -45,6 +45,12 @@ def build_panel():
         for row in banf[gid]["years"]:
             ba[(gid, int(row["year"]))] = float(row["ba_area_ha"] or 0.0)
 
+    # GWIS consolidates with a lag: a year whose burned area is zero across
+    # every region is unconsolidated, not fire-free — never a training target.
+    year_total: dict[int, float] = {}
+    for (g, y), v in ba.items():
+        year_total[y] = year_total.get(y, 0.0) + v
+
     rows = []
     for gid in gids:
         crows = {r["year"]: r for r in climate[gid]["years"]}
@@ -62,8 +68,11 @@ def build_panel():
                 "gid": gid,
                 "year": year,
                 "x": feats,
-                # the running year has no consolidated target yet
-                "y": None if year == current_year else math.log1p(ba.get((gid, year), 0.0)),
+                # unconsolidated years (running year, or zero across Spain)
+                # have no usable target
+                "y": None
+                if year == current_year or year_total.get(year, 0.0) <= 0
+                else math.log1p(ba.get((gid, year), 0.0)),
             })
     return gids, rows
 
@@ -178,9 +187,15 @@ def build_monthly_panel():
             y2 -= 1
         return y2, m2
 
+    year_total: dict[int, float] = {}
+    for (g, y, m), v in ba.items():
+        year_total[y] = year_total.get(y, 0.0) + v
+
     rows = []
     for gid in gids:
         for year in range(2007, current.year):
+            if year_total.get(year, 0.0) <= 0:
+                continue  # unconsolidated in GWIS, not fire-free
             for month in range(1, 13):
                 c = clim.get((gid, year, month))
                 lags = [clim.get((gid, *back(year, month, k))) for k in (1, 2, 3, 4)]
