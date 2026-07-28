@@ -82,7 +82,14 @@ def get_json(url: str, tries: int = 3, timeout: int = 60):
         except Exception as exc:  # noqa: BLE001 - retry any transport error
             last = exc
             time.sleep(2 * (i + 1))
-    raise RuntimeError(f"failed after {tries} tries: {url}") from last
+    detail = getattr(last, "code", "") or ""
+    body = ""
+    if hasattr(last, "read"):
+        try:
+            body = last.read(300).decode("utf-8", "replace")
+        except Exception:  # noqa: BLE001
+            pass
+    raise RuntimeError(f"failed after {tries} tries ({detail} {last!r} {body}): {url}") from last
 
 
 def write(name: str, payload: dict) -> None:
@@ -252,7 +259,7 @@ def jsonstat_cells(data):
 def etl_livestock() -> None:
     geos = sorted({g for pair in GID_TO_NUTS2.values() for g in pair} | {"ES"})
     geo_q = "&".join(f"geo={g}" for g in geos)
-    url = f"{EUROSTAT}?format=JSON&lang=EN&unit=THS_HD&{geo_q}"
+    url = f"{EUROSTAT}?format=JSON&lang=EN&unit=THS_HD&sinceTimePeriod=2005&{geo_q}"
     data = get_json(url, timeout=120)
 
     labels = data["dimension"]["animals"]["category"]["label"]
