@@ -36,7 +36,7 @@ jobs:
       - name: Train season-outlook models
         # Non-fatal: a training failure must not discard the fetched snapshots.
         run: |
-          pip install --quiet numpy
+          pip install --quiet numpy scikit-learn
           if [ -f app/data/climate-regions-esp.json ]; then
             python scripts/train_model.py || echo "WARN training failed; committing data anyway"
           else

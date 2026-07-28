@@ -296,9 +296,112 @@ def main_monthly() -> None:
           f"R2summer={best['cv_r2_log_summer']} factor={best['cv_mae_factor']}")
 
 
+GBM_GRID = [
+    {"max_depth": 2, "n_estimators": 300, "learning_rate": 0.05, "subsample": 0.8},
+    {"max_depth": 3, "n_estimators": 200, "learning_rate": 0.05, "subsample": 0.8},
+    {"max_depth": 3, "n_estimators": 300, "learning_rate": 0.03, "subsample": 0.7},
+]
+
+
+def gbm_design(rows, gids):
+    return np.array([
+        list(r["x"]) + [r["month"]] + [1.0 if r["gid"] == g else 0.0 for g in gids]
+        for r in rows
+    ])
+
+
+def export_trees(model):
+    trees = []
+    for est in model.estimators_[:, 0]:
+        t = est.tree_
+        trees.append({
+            "f": [int(v) for v in t.feature],           # -2 marks a leaf
+            "t": [round(float(v), 5) for v in t.threshold],
+            "l": [int(v) for v in t.children_left],
+            "r": [int(v) for v in t.children_right],
+            "v": [round(float(v[0][0]), 5) for v in t.value],
+        })
+    return trees
+
+
+def main_gbm(ridge_cv_r2: float) -> None:
+    """Gradient boosting challenger on the monthly panel: exported for the
+    browser only when it beats the ridge model out-of-year."""
+    from sklearn.ensemble import GradientBoostingRegressor
+
+    gids, rows = build_monthly_panel()
+    if len(rows) < 1500:
+        raise SystemExit(f"monthly panel too small: {len(rows)} rows")
+    X = gbm_design(rows, gids)
+    y = np.array([r["y"] for r in rows])
+    years = sorted({r["year"] for r in rows})
+
+    best = None
+    for params in GBM_GRID:
+        preds = np.zeros(len(rows))
+        for held in years:
+            tr = [i for i, r in enumerate(rows) if r["year"] != held]
+            te = [i for i, r in enumerate(rows) if r["year"] == held]
+            m = GradientBoostingRegressor(random_state=0, **params)
+            m.fit(X[tr], y[tr])
+            preds[te] = m.predict(X[te])
+        resid = y - preds
+        r2 = 1 - float((resid**2).sum()) / float(((y - y.mean()) ** 2).sum())
+        mae = float(np.abs(resid).mean())
+        summer = [i for i, r in enumerate(rows) if 6 <= r["month"] <= 9]
+        rs = y[summer] - preds[summer]
+        r2s = 1 - float((rs**2).sum()) / float(((y[summer] - y[summer].mean()) ** 2).sum())
+        print(f"gbm {params}: LOYO R2={r2:.3f} R2summer={r2s:.3f} factor={math.exp(mae):.2f}")
+        if best is None or r2 > best["cv_r2_log"]:
+            best = {
+                "params": params,
+                "cv_r2_log": round(r2, 3),
+                "cv_r2_log_summer": round(r2s, 3),
+                "cv_mae_log": round(mae, 3),
+                "cv_mae_factor": round(math.exp(mae), 2),
+                "resid_q10": round(float(np.quantile(resid, 0.10)), 3),
+                "resid_q90": round(float(np.quantile(resid, 0.90)), 3),
+            }
+
+    out = DATA / "model-monthly-gbm-esp.json"
+    if best["cv_r2_log"] <= ridge_cv_r2:
+        print(f"gbm ({best['cv_r2_log']}) does not beat ridge ({ridge_cv_r2}); not exporting")
+        if out.exists():
+            out.unlink()
+        return
+
+    m = GradientBoostingRegressor(random_state=0, **best["params"])
+    m.fit(X, y)
+    params = best.pop("params")
+    model = {
+        "kind": "gradient boosting log1p(ba_ha_month), scikit-learn export",
+        "numeric_features": MONTHLY_NUMERIC,
+        "extra_features": ["month"],
+        "regions": gids,
+        "base": round(float(m.init_.constant_[0][0]), 5),
+        "learning_rate": params["learning_rate"],
+        "trees": export_trees(m),
+        "n_train": len(rows),
+        "years": [years[0], years[-1]],
+        "validation": "leave-one-year-out",
+        "ridge_cv_r2_log": ridge_cv_r2,
+        **best,
+    }
+    from datetime import datetime, timezone
+    model = {"generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), **model}
+    out.write_text(json.dumps(model, ensure_ascii=False, separators=(",", ":")) + "\n")
+    print(f"wrote {out} ({out.stat().st_size} bytes) R2={best['cv_r2_log']} "
+          f"R2summer={best['cv_r2_log_summer']} factor={best['cv_mae_factor']}")
+
+
 if __name__ == "__main__":
     main()
     try:
         main_monthly()
+        ridge_r2 = json.loads((DATA / "model-monthly-esp.json").read_text())["cv_r2_log"]
+        try:
+            main_gbm(ridge_r2)
+        except ImportError as exc:
+            print(f"gbm skipped (scikit-learn unavailable): {exc}")
     except FileNotFoundError as exc:
-        print(f"monthly model skipped (missing input): {exc}")
+        print(f"monthly models skipped (missing input): {exc}")
