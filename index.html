@@ -145,11 +145,34 @@
     <p id="rs-pending" class="note tight" data-i18n="rsPending" hidden>The {year} annual figure isn't
     consolidated in GWIS yet — see "Today at a glance" for near-real-time season totals.</p>
     <div id="region-chart" class="chart" data-i18n-aria="regionChartAria" aria-label="Burned area per year for the selected region"></div>
+    <div id="livestock-block" hidden>
+      <p class="note tight"><strong data-i18n="lsTitle">Sheep &amp; goat herd</strong> · <span id="ls-delta"></span></p>
+      <div id="livestock-chart" class="chart" data-i18n-aria="lsChartAria" aria-label="Sheep and goat herd per year for the selected region"></div>
+      <p class="note" data-i18n="lsNote">Extensive sheep and goat grazing removes fine fuel from the
+      landscape; the herd's decline is one hypothesis behind worsening fire seasons.
+      Source: Eurostat (tgs00045 regional from 2014; apro_mt_ls* national from 2005), thousand head.</p>
+    </div>
     <p id="region-fallback" class="note" data-i18n="regionFallback" hidden>Regional statistics are unavailable right now — try again later.</p>
     <p class="note" data-i18n="regionNote">Satellite-mapped burned area (MODIS, ≳30 ha) from the GWIS
     country profiles, aggregated to GADM regions. Figures differ from the
     national EGIF statistic; this dataset publishes comunidades, not
     provincias. Selecting a region also zooms the map.</p>
+  </section>
+
+  <section class="card climate-card" aria-label="Climate and fire" id="climate-card" hidden>
+    <div class="card-head"><h2 data-i18n="climateTitle">Climate &amp; fire</h2><span class="muted">ERA5 · Open-Meteo</span></div>
+    <div class="chip-row climate-chips" role="group" data-i18n-aria="climateChipsAria" aria-label="Choose a climate variable">
+      <button class="chip" data-metric="spring_precip" data-i18n="cmSpring">Spring rain</button>
+      <button class="chip" data-metric="presummer_precip" data-i18n="cmPre">Oct–May rain</button>
+      <button class="chip" data-metric="summer_tmax" data-i18n="cmTmax">Summer max temp</button>
+      <button class="chip" data-metric="summer_wind" data-i18n="cmWind">Summer wind</button>
+    </div>
+    <div id="climate-chart" class="chart" data-i18n-aria="climateChartAria" aria-label="Scatter plot of a climate variable against annual burned area"></div>
+    <p id="climate-verdict" class="note tight"></p>
+    <p class="note" data-i18n="climateNote">Each dot is a year (2005 onwards): the chosen seasonal
+    climate signal against that year's burned area. Climate: ERA5 reanalysis
+    averaged over 15 peninsular points (Open-Meteo). Correlation is not
+    causation — use as context, not prediction.</p>
   </section>
 
   <section class="card chart-card" aria-label="Annual burned area in Spain">
