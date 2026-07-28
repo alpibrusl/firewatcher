@@ -32,6 +32,14 @@ jobs:
           python-version: "3.12"
       - name: Fetch snapshots
         run: python scripts/etl.py
+      - name: Train season-outlook model
+        run: |
+          pip install --quiet numpy
+          if [ -f app/data/climate-regions-esp.json ]; then
+            python scripts/train_model.py
+          else
+            echo "no regional climate yet; skipping training"
+          fi
       - name: Commit and push if changed
         run: |
           git config user.name "firewatcher-etl"

@@ -61,6 +61,14 @@ const I18N = {
       "The {year} annual figure isn't consolidated in GWIS yet — see \u201cToday at a glance\u201d for near-real-time season totals.",
     regionNote:
       "Satellite-mapped burned area (MODIS, ≳30 ha) from the GWIS country profiles, aggregated to GADM regions. Figures differ from the national EGIF statistic; this dataset publishes comunidades, not provincias. Selecting a region also zooms the map.",
+    olTitle: "Season outlook (experimental model)",
+    olRangeLabel: "ha predicted for {year} (80 % range)",
+    olPointLabel: "central estimate, ha",
+    olInputsPartial: "Inputs: {year} climate with the summer observed to date — the range narrows as the season closes.",
+    olInputsFull: "Inputs: complete {year} seasonal climate.",
+    olQuality: "Quality: leave-one-year-out R² = {r2} on the log scale; typical error ×{factor}.",
+    olNote:
+      'Ridge regression on comunidad-year data (2007 onwards): regional seasonal climate, recent burn history and region effects, validated leave-one-year-out. <span id="ol-quality"></span> Experimental — wide ranges are honest for fire data; this is context, not an operational forecast.',
     lsTitle: "Sheep &amp; goat herd",
     lsDelta: "{pct} % since {from} (to {to})",
     lsTooltip: "≈ {n} head",
@@ -162,6 +170,14 @@ const I18N = {
       "El dato anual de {year} aún no está consolidado en GWIS — consulta «Hoy de un vistazo» para los totales casi en tiempo real de la temporada.",
     regionNote:
       "Superficie quemada cartografiada por satélite (MODIS, ≳30 ha) de los perfiles de país de GWIS, agregada a regiones GADM. Las cifras difieren de la estadística nacional EGIF; esta fuente publica comunidades, no provincias. Al elegir una región, el mapa también hace zoom.",
+    olTitle: "Previsión de temporada (modelo experimental)",
+    olRangeLabel: "ha previstas para {year} (rango del 80 %)",
+    olPointLabel: "estimación central, ha",
+    olInputsPartial: "Entradas: clima de {year} con el verano observado hasta la fecha — el rango se estrecha al cerrar la temporada.",
+    olInputsFull: "Entradas: clima estacional completo de {year}.",
+    olQuality: "Calidad: R² = {r2} en escala logarítmica con validación dejando fuera cada año; error típico ×{factor}.",
+    olNote:
+      'Regresión ridge sobre datos comunidad-año (desde 2007): clima estacional regional, historial reciente de incendios y efectos regionales, validada dejando fuera un año cada vez. <span id="ol-quality"></span> Experimental — los rangos anchos son lo honesto con datos de incendios; es contexto, no una predicción operativa.',
     lsTitle: "Cabaña ovina y caprina",
     lsDelta: "{pct} % desde {from} (hasta {to})",
     lsTooltip: "≈ {n} cabezas",
@@ -266,6 +282,7 @@ function applyLang() {
   }
   if (climateData) renderClimate();
   if (livestockGid) renderLivestock(livestockGid);
+  if (outlookGid) renderOutlook(outlookGid);
 }
 
 /* ---------- map ---------- */
@@ -728,6 +745,7 @@ async function selectRegion(ctx, gid) {
   }
 
   renderLivestock(gid);
+  renderOutlook(gid);
 
   const stats = document.getElementById("region-stats");
   const fallback = document.getElementById("region-fallback");
@@ -861,6 +879,85 @@ function renderRegionChart(allYears, name) {
     fmtTick,
     aria: t("regChartAria", { name, last: years[years.length - 1].year }),
   });
+}
+
+/* ---------- season outlook (experimental in-browser inference) ---------- */
+
+let modelSnapshot;
+let regClimateSnapshot;
+let outlookGid = null;
+
+function priorBurnFeature(gid, year) {
+  const entry = banfSnapshot && banfSnapshot.series && banfSnapshot.series[gid];
+  const byYear = new Map((entry ? entry.years : []).map((r) => [r.year, r.ba_area_ha || 0]));
+  const prior = [year - 3, year - 2, year - 1].map((y) => byYear.get(y) || 0);
+  return Math.log1p(prior.reduce((a, b) => a + b, 0) / prior.length);
+}
+
+async function renderOutlook(gid) {
+  outlookGid = gid;
+  const block = document.getElementById("outlook-block");
+  if (modelSnapshot === undefined) {
+    [modelSnapshot, regClimateSnapshot] = await Promise.all([
+      fetchJSON("data/model-esp.json", 8000).catch(() => null),
+      fetchJSON("data/climate-regions-esp.json", 8000).catch(() => null),
+    ]);
+  }
+  if (banfSnapshot === undefined) {
+    banfSnapshot = await fetchJSON("data/gwis-banf.json", 8000).catch(() => null);
+  }
+  if (outlookGid !== gid) return;
+  const m = modelSnapshot;
+  const rc = regClimateSnapshot && regClimateSnapshot.regions;
+  const year = today.getFullYear();
+  const climKeys = m ? m.numeric_features.slice(0, -1) : [];
+  const targets = gid === "ESP" ? (m ? m.regions : []) : [gid];
+
+  const usable =
+    m && rc && banfSnapshot && targets.length &&
+    targets.every((g) => m.regions.includes(g) && rc[g]);
+  if (!usable) {
+    block.hidden = true;
+    return;
+  }
+
+  let point = 0;
+  let lo = 0;
+  let hi = 0;
+  let partial = false;
+  for (const g of targets) {
+    const crow = (rc[g].years || []).find((r) => r.year === year);
+    if (!crow || climKeys.some((k) => !(k in crow))) {
+      block.hidden = true;
+      return;
+    }
+    if (climKeys.some((k) => crow[`${k}_partial`])) partial = true;
+    const feats = climKeys.map((k) => crow[k]);
+    feats.push(priorBurnFeature(g, year));
+    let z = m.intercept;
+    m.numeric_features.forEach((k, i) => {
+      z += m.coef[i] * ((feats[i] - m.mean[i]) / m.std[i]);
+    });
+    z += m.coef[m.numeric_features.length + m.regions.indexOf(g)];
+    point += Math.expm1(z);
+    lo += Math.expm1(z + m.resid_q10);
+    hi += Math.expm1(z + m.resid_q90);
+  }
+
+  block.hidden = false;
+  document.getElementById("ol-range").textContent = `${fmtNum(lo)} – ${fmtNum(hi)}`;
+  document.getElementById("ol-point").textContent = fmtNum(point);
+  document.getElementById("ol-inputs").textContent = t(
+    partial ? "olInputsPartial" : "olInputsFull",
+    { year }
+  );
+  const q = document.getElementById("ol-quality");
+  if (q) {
+    q.textContent = t("olQuality", {
+      r2: m.cv_r2_log.toLocaleString(t("numLocale")),
+      factor: m.cv_mae_factor.toLocaleString(t("numLocale")),
+    });
+  }
 }
 
 /* ---------- climate & fire correlation ---------- */
