@@ -949,7 +949,10 @@ function renderClimate() {
   verdict.textContent = t("rLine", {
     metric: t(CLIMATE_METRICS[climateMetric].labelKey),
     n: pts.length,
-    r: (Math.round(r * 100) / 100).toLocaleString(t("numLocale")),
+    r: r.toLocaleString(t("numLocale"), {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }),
     desc,
   });
 }
