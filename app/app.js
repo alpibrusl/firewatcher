@@ -61,6 +61,12 @@ const I18N = {
       "The {year} annual figure isn't consolidated in GWIS yet — see \u201cToday at a glance\u201d for near-real-time season totals.",
     regionNote:
       "Satellite-mapped burned area (MODIS, ≳30 ha) from the GWIS country profiles, aggregated to GADM regions. Figures differ from the national EGIF statistic; this dataset publishes comunidades, not provincias. Selecting a region also zooms the map.",
+    lsTitle: "Sheep &amp; goat herd",
+    lsDelta: "{pct} % since {from} (to {to})",
+    lsTooltip: "≈ {n} head",
+    lsChartAria: "Sheep and goat herd per year for the selected region, thousand head",
+    lsNote:
+      "Extensive sheep and goat grazing removes fine fuel from the landscape; the herd's decline is one hypothesis behind worsening fire seasons. Source: Eurostat (agr_r_animal), thousand head.",
     climateTitle: "Climate &amp; fire",
     climateChipsAria: "Choose a climate variable",
     cmSpring: "Spring rain",
@@ -156,6 +162,12 @@ const I18N = {
       "El dato anual de {year} aún no está consolidado en GWIS — consulta «Hoy de un vistazo» para los totales casi en tiempo real de la temporada.",
     regionNote:
       "Superficie quemada cartografiada por satélite (MODIS, ≳30 ha) de los perfiles de país de GWIS, agregada a regiones GADM. Las cifras difieren de la estadística nacional EGIF; esta fuente publica comunidades, no provincias. Al elegir una región, el mapa también hace zoom.",
+    lsTitle: "Cabaña ovina y caprina",
+    lsDelta: "{pct} % desde {from} (hasta {to})",
+    lsTooltip: "≈ {n} cabezas",
+    lsChartAria: "Cabaña ovina y caprina por año en la región seleccionada, en miles de cabezas",
+    lsNote:
+      "El pastoreo extensivo de ovino y caprino retira combustible fino del monte; el declive de la cabaña es una de las hipótesis del empeoramiento de los incendios. Fuente: Eurostat (agr_r_animal), miles de cabezas.",
     climateTitle: "Clima y fuego",
     climateChipsAria: "Elige una variable climática",
     cmSpring: "Lluvia de primavera",
@@ -253,6 +265,7 @@ function applyLang() {
     renderRegionChart(regionCache.years, regionCache.name);
   }
   if (climateData) renderClimate();
+  if (livestockGid) renderLivestock(livestockGid);
 }
 
 /* ---------- map ---------- */
@@ -714,6 +727,8 @@ async function selectRegion(ctx, gid) {
     ctx.map.setView([39.9, -3.6], 6);
   }
 
+  renderLivestock(gid);
+
   const stats = document.getElementById("region-stats");
   const fallback = document.getElementById("region-fallback");
   const year = today.getFullYear();
@@ -756,6 +771,50 @@ async function selectRegion(ctx, gid) {
 }
 
 let banfSnapshot;
+
+/* ---------- livestock (Eurostat sheep + goats) ---------- */
+
+let livestockSnapshot;
+let livestockGid = null;
+
+async function renderLivestock(gid) {
+  livestockGid = gid;
+  const block = document.getElementById("livestock-block");
+  if (livestockSnapshot === undefined) {
+    livestockSnapshot = await fetchJSON("data/livestock-esp.json", 8000).catch(() => null);
+  }
+  const entry =
+    livestockSnapshot && livestockSnapshot.series && livestockSnapshot.series[gid];
+  if (!entry || entry.years.length < 2 || livestockGid !== gid) {
+    if (livestockGid === gid) block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+
+  const years = entry.years;
+  const first = years[0];
+  const last = years[years.length - 1];
+  const pct = Math.round(((last.ths_head - first.ths_head) / first.ths_head) * 100);
+  document.getElementById("ls-delta").textContent = t("lsDelta", {
+    pct: (pct > 0 ? "+" : "") + pct.toLocaleString(t("numLocale")),
+    from: first.year,
+    to: last.year,
+  });
+
+  const fmtTick = (v) =>
+    v >= 1000 ? `${(Math.round(v / 100) / 10).toLocaleString(t("numLocale"))}M` : `${Math.round(v)}k`;
+  const points = years.map((d) => ({
+    label: String(d.year),
+    value: d.ths_head,
+    html: `<span class="t-title">${d.year}</span><br><span class="t-value">${t("lsTooltip", { n: fmtNum(d.ths_head * 1000) })}</span>`,
+    aria: `${d.year}: ${fmtNum(d.ths_head * 1000)}`,
+  }));
+  barChart(document.getElementById("livestock-chart"), points, {
+    direct: new Set([String(last.year)]),
+    fmtTick,
+    aria: t("lsChartAria"),
+  });
+}
 
 // The GWIS annual series consolidates months after the fact, so the running
 // year is often absent or zero long after fires have burnt (the weekly

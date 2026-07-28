@@ -49,6 +49,18 @@ REGIONS = {
     "ESP.18_1": "Región de Murcia",
 }
 
+EUROSTAT = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/agr_r_animal"
+
+# GADM admin-1 -> Eurostat NUTS2 (Ceuta y Melilla are two NUTS2 codes).
+GID_TO_NUTS2 = {
+    "ESP.1_1": ["ES61"], "ESP.2_1": ["ES24"], "ESP.3_1": ["ES13"],
+    "ESP.4_1": ["ES42"], "ESP.5_1": ["ES41"], "ESP.6_1": ["ES51"],
+    "ESP.7_1": ["ES63", "ES64"], "ESP.8_1": ["ES30"], "ESP.9_1": ["ES22"],
+    "ESP.10_1": ["ES52"], "ESP.11_1": ["ES43"], "ESP.12_1": ["ES11"],
+    "ESP.13_1": ["ES53"], "ESP.14_1": ["ES70"], "ESP.15_1": ["ES23"],
+    "ESP.16_1": ["ES21"], "ESP.17_1": ["ES12"], "ESP.18_1": ["ES62"],
+}
+
 # Sample points spread over peninsular Spain for the national climate signal
 # (ERA5 point extraction via Open-Meteo; fires are overwhelmingly peninsular).
 CLIMATE_POINTS = [
@@ -186,9 +198,86 @@ def etl_climate() -> None:
     })
 
 
+def jsonstat_cells(data):
+    """Yield (coords: dict dim->code, value) for a JSON-stat 2.0 response."""
+    dims = data["id"]
+    sizes = data["size"]
+    codes = []
+    for d in dims:
+        index = data["dimension"][d]["category"]["index"]
+        if isinstance(index, dict):
+            by_pos = sorted(index.items(), key=lambda kv: kv[1])
+            codes.append([code for code, _ in by_pos])
+        else:  # plain list
+            codes.append(list(index))
+    for key, value in data["value"].items():
+        if value is None:
+            continue
+        idx = int(key)
+        coords = {}
+        for d, size, cs in zip(reversed(dims), reversed(sizes), reversed(codes)):
+            idx, pos = divmod(idx, size)
+            coords[d] = cs[pos]
+        yield coords, value
+
+
+def etl_livestock() -> None:
+    geos = sorted({g for pair in GID_TO_NUTS2.values() for g in pair} | {"ES"})
+    geo_q = "&".join(f"geo={g}" for g in geos)
+    url = f"{EUROSTAT}?format=JSON&lang=EN&unit=THS_HD&{geo_q}"
+    data = get_json(url, timeout=120)
+
+    labels = data["dimension"]["animals"]["category"]["label"]
+    print("eurostat animals codes:", json.dumps(labels, ensure_ascii=False))
+    wanted = {
+        code
+        for code, label in labels.items()
+        if "sheep" in label.lower() or "goat" in label.lower()
+    }
+    if not wanted:
+        raise RuntimeError("no sheep/goat codes found in agr_r_animal")
+
+    # (geo, year) -> thousand head, summed over sheep + goats
+    totals: dict[tuple[str, int], float] = {}
+    for coords, value in jsonstat_cells(data):
+        if coords.get("animals") not in wanted:
+            continue
+        year = int(coords["time"])
+        if year < 2005:
+            continue
+        key = (coords["geo"], year)
+        totals[key] = totals.get(key, 0.0) + value
+
+    def series_for(nuts_list):
+        by_year: dict[int, float] = {}
+        for (geo, year), v in totals.items():
+            if geo in nuts_list:
+                by_year[year] = by_year.get(year, 0.0) + v
+        return [
+            {"year": y, "ths_head": round(v, 1)} for y, v in sorted(by_year.items())
+        ]
+
+    series = {}
+    for gid, nuts in GID_TO_NUTS2.items():
+        s = series_for(nuts)
+        if s:
+            series[gid] = {"name": REGIONS[gid], "years": s}
+    national = series_for(["ES"])
+    if not national or len(series) < 15:
+        raise RuntimeError(
+            f"livestock series incomplete: national={len(national)} regions={len(series)}"
+        )
+    series["ESP"] = {"name": "España", "years": national}
+    write("livestock-esp.json", {
+        "unit": "thousand head, sheep + goats",
+        "source": "Eurostat agr_r_animal (NUTS2)",
+        "series": series,
+    })
+
+
 def main() -> None:
     failures = []
-    for step in (etl_effis_weekly, etl_gwis_banf, etl_climate):
+    for step in (etl_effis_weekly, etl_gwis_banf, etl_climate, etl_livestock):
         try:
             step()
         except Exception as exc:  # noqa: BLE001 - a partial refresh beats none
