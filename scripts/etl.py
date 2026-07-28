@@ -137,12 +137,33 @@ def season_slices(year: int):
 def etl_climate() -> None:
     # ERA5 publishes with ~5 days delay.
     end = date.today() - timedelta(days=7)
-    start = date(CLIMATE_START_YEAR - 1, 10, 1)  # need Oct of the prior year
     daily_vars = "precipitation_sum,temperature_2m_max,wind_speed_10m_max"
 
-    # date -> [per-var running aggregates across points]
+    # Incremental: history never changes, so after the first backfill only
+    # re-fetch years that are (or were written as) incomplete. This keeps the
+    # daily load tiny — the full 20-year backfill trips Open-Meteo rate limits
+    # if requested repeatedly.
+    out_path = OUT / "climate-esp.json"
+    keep: list[dict] = []
+    from_year = CLIMATE_START_YEAR
+    if out_path.exists():
+        try:
+            existing = json.loads(out_path.read_text())["years"]
+            stale = [
+                r["year"]
+                for r in existing
+                if any(k.endswith("_partial") for k in r)
+            ]
+            from_year = min([end.year, *stale])
+            keep = [r for r in existing if r["year"] < from_year]
+        except Exception as exc:  # noqa: BLE001 - corrupt file -> full backfill
+            print(f"climate snapshot unreadable, full backfill: {exc}")
+    start = date(from_year - 1, 10, 1)  # presummer needs Oct of the prior year
+
+    # date -> per-var running sums across points
     frames: dict[str, dict[str, float]] = {}
     counts: dict[str, dict[str, int]] = {}
+    points_ok = 0
     for lat, lon in CLIMATE_POINTS:
         q = urllib.parse.urlencode({
             "latitude": lat,
@@ -152,7 +173,12 @@ def etl_climate() -> None:
             "daily": daily_vars,
             "timezone": "UTC",
         })
-        data = get_json(f"{OPEN_METEO}?{q}", timeout=120)
+        try:
+            data = get_json(f"{OPEN_METEO}?{q}", tries=4, timeout=120)
+        except Exception as exc:  # noqa: BLE001 - tolerate dropped points
+            print(f"WARN climate point ({lat},{lon}) failed: {exc}")
+            continue
+        points_ok += 1
         daily = data["daily"]
         for i, day in enumerate(daily["time"]):
             f = frames.setdefault(day, {})
@@ -163,7 +189,9 @@ def etl_climate() -> None:
                     continue
                 f[var] = f.get(var, 0.0) + v
                 c[var] = c.get(var, 0) + 1
-        time.sleep(0.5)
+        time.sleep(1.0)
+    if points_ok < 10:
+        raise RuntimeError(f"only {points_ok}/15 climate points fetched")
 
     # point-mean per day
     per_day = {
@@ -171,8 +199,8 @@ def etl_climate() -> None:
         for day, f in frames.items()
     }
 
-    years = []
-    for year in range(CLIMATE_START_YEAR, end.year + 1):
+    years = list(keep)
+    for year in range(from_year, end.year + 1):
         row = {"year": year}
         for key, (d0, d1, var, how) in season_slices(year).items():
             vals = [
@@ -192,7 +220,7 @@ def etl_climate() -> None:
         years.append(row)
 
     write("climate-esp.json", {
-        "points": len(CLIMATE_POINTS),
+        "points": points_ok,
         "source": "ERA5 via Open-Meteo archive API",
         "years": years,
     })
