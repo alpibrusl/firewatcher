@@ -466,3 +466,19 @@ a:hover { text-decoration: underline; }
 }
 
 .sym.sq { border-radius: 2px; }
+
+/* Climate & fire scatter */
+
+.climate-chips { margin-bottom: 0.5rem; }
+
+.dot {
+  fill: var(--accent);
+  opacity: 0.75;
+  stroke: none;
+  cursor: pointer;
+  transition: opacity 120ms;
+}
+
+.dot:hover, .dot:focus { opacity: 1; outline: none; }
+
+.dot-peak { fill: var(--accent-ink); opacity: 0.95; }
