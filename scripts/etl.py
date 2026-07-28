@@ -80,6 +80,28 @@ CLIMATE_POINTS = [
 ]
 CLIMATE_START_YEAR = 2005
 
+# Representative ERA5 sample points per comunidad (capital + spread for the
+# large ones). Ceuta y Melilla is excluded from the regional climate/model.
+REGION_POINTS = {
+    "ESP.1_1": [(37.39, -5.99), (37.89, -4.78), (37.18, -3.60), (37.26, -6.94)],
+    "ESP.2_1": [(41.65, -0.88), (40.34, -1.11)],
+    "ESP.3_1": [(43.46, -3.80)],
+    "ESP.4_1": [(39.86, -4.02), (38.99, -1.86), (38.99, -3.93)],
+    "ESP.5_1": [(41.65, -4.72), (42.60, -5.57), (41.77, -2.47)],
+    "ESP.6_1": [(41.39, 2.17), (41.62, 0.62)],
+    "ESP.8_1": [(40.42, -3.70)],
+    "ESP.9_1": [(42.82, -1.65)],
+    "ESP.10_1": [(39.47, -0.38), (38.35, -0.48)],
+    "ESP.11_1": [(39.47, -6.37), (38.88, -6.97)],
+    "ESP.12_1": [(42.88, -8.55), (42.34, -7.86)],
+    "ESP.13_1": [(39.57, 2.65)],
+    "ESP.14_1": [(28.12, -15.43), (28.46, -16.25)],
+    "ESP.15_1": [(42.47, -2.45)],
+    "ESP.16_1": [(42.85, -2.67)],
+    "ESP.17_1": [(43.36, -5.85)],
+    "ESP.18_1": [(37.99, -1.13)],
+}
+
 
 def get_json(url: str, tries: int = 3, timeout: int = 60):
     last = None
@@ -150,43 +172,31 @@ def season_slices(year: int):
     }
 
 
-def etl_climate() -> None:
-    # ERA5 publishes with ~5 days delay.
-    end = date.today() - timedelta(days=7)
-    daily_vars = "precipitation_sum,temperature_2m_max,wind_speed_10m_max"
+DAILY_VARS = "precipitation_sum,temperature_2m_max,wind_speed_10m_max"
 
-    # Incremental: history never changes, so after the first backfill only
-    # re-fetch years that are (or were written as) incomplete. This keeps the
-    # daily load tiny — the full 20-year backfill trips Open-Meteo rate limits
-    # if requested repeatedly.
-    out_path = OUT / "climate-esp.json"
-    keep: list[dict] = []
-    from_year = CLIMATE_START_YEAR
-    if out_path.exists():
-        try:
-            existing = json.loads(out_path.read_text())["years"]
-            stale = [
-                r["year"]
-                for r in existing
-                if any(k.endswith("_partial") for k in r)
-            ]
-            from_year = min([end.year, *stale])
-            keep = [r for r in existing if r["year"] < from_year]
-        except Exception as exc:  # noqa: BLE001 - corrupt file -> full backfill
-            print(f"climate snapshot unreadable, full backfill: {exc}")
-    start = date(from_year - 1, 10, 1)  # presummer needs Oct of the prior year
 
-    # date -> per-var running sums across points
+def incremental_bounds(existing_years: list[dict], end: date):
+    """History never changes: after the first backfill only re-fetch years
+    that are (or were written as) incomplete. Repeated full backfills trip
+    Open-Meteo rate limits."""
+    stale = [r["year"] for r in existing_years if any(k.endswith("_partial") for k in r)]
+    from_year = min([end.year, *stale])
+    keep = [r for r in existing_years if r["year"] < from_year]
+    return from_year, keep
+
+
+def fetch_daily_means(points, start: date, end: date, min_points: int):
+    """Fetch daily ERA5 vars for each point and average across points."""
     frames: dict[str, dict[str, float]] = {}
     counts: dict[str, dict[str, int]] = {}
     points_ok = 0
-    for lat, lon in CLIMATE_POINTS:
+    for lat, lon in points:
         q = urllib.parse.urlencode({
             "latitude": lat,
             "longitude": lon,
             "start_date": start.isoformat(),
             "end_date": end.isoformat(),
-            "daily": daily_vars,
+            "daily": DAILY_VARS,
             "timezone": "UTC",
         })
         try:
@@ -199,23 +209,24 @@ def etl_climate() -> None:
         for i, day in enumerate(daily["time"]):
             f = frames.setdefault(day, {})
             c = counts.setdefault(day, {})
-            for var in daily_vars.split(","):
+            for var in DAILY_VARS.split(","):
                 v = daily[var][i]
                 if v is None:
                     continue
                 f[var] = f.get(var, 0.0) + v
                 c[var] = c.get(var, 0) + 1
         time.sleep(1.0)
-    if points_ok < 10:
-        raise RuntimeError(f"only {points_ok}/15 climate points fetched")
-
-    # point-mean per day
+    if points_ok < min_points:
+        raise RuntimeError(f"only {points_ok}/{len(points)} climate points fetched")
     per_day = {
         day: {var: f[var] / counts[day][var] for var in f}
         for day, f in frames.items()
     }
+    return per_day, points_ok
 
-    years = list(keep)
+
+def seasonal_rows(per_day, from_year: int, end: date) -> list[dict]:
+    rows = []
     for year in range(from_year, end.year + 1):
         row = {"year": year}
         for key, (d0, d1, var, how) in season_slices(year).items():
@@ -233,12 +244,63 @@ def etl_climate() -> None:
             row[key] = round(agg, 1)
             if d1 > end:
                 row[key + "_partial"] = True
-        years.append(row)
+        rows.append(row)
+    return rows
 
+
+def load_existing(name: str, key: str):
+    path = OUT / name
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())[key]
+    except Exception as exc:  # noqa: BLE001 - corrupt file -> full backfill
+        print(f"{name} unreadable, full backfill: {exc}")
+        return None
+
+
+def etl_climate() -> None:
+    # ERA5 publishes with ~5 days delay.
+    end = date.today() - timedelta(days=7)
+    existing = load_existing("climate-esp.json", "years")
+    from_year, keep = (
+        incremental_bounds(existing, end) if existing else (CLIMATE_START_YEAR, [])
+    )
+    start = date(from_year - 1, 10, 1)  # presummer needs Oct of the prior year
+    per_day, points_ok = fetch_daily_means(CLIMATE_POINTS, start, end, min_points=10)
     write("climate-esp.json", {
         "points": points_ok,
         "source": "ERA5 via Open-Meteo archive API",
-        "years": years,
+        "years": keep + seasonal_rows(per_day, from_year, end),
+    })
+
+
+def etl_climate_regions() -> None:
+    end = date.today() - timedelta(days=7)
+    existing = load_existing("climate-regions-esp.json", "regions") or {}
+    regions_out = {}
+    for gid, points in REGION_POINTS.items():
+        prior = (existing.get(gid) or {}).get("years", [])
+        from_year, keep = (
+            incremental_bounds(prior, end) if prior else (CLIMATE_START_YEAR, [])
+        )
+        start = date(from_year - 1, 10, 1)
+        try:
+            per_day, _ = fetch_daily_means(points, start, end, min_points=1)
+        except Exception as exc:  # noqa: BLE001 - keep prior data for the region
+            print(f"WARN climate region {gid} failed: {exc}")
+            if prior:
+                regions_out[gid] = existing[gid]
+            continue
+        regions_out[gid] = {
+            "name": REGIONS[gid],
+            "years": keep + seasonal_rows(per_day, from_year, end),
+        }
+    if len(regions_out) < 14:
+        raise RuntimeError(f"only {len(regions_out)}/17 climate regions built")
+    write("climate-regions-esp.json", {
+        "source": "ERA5 via Open-Meteo archive API, per-comunidad sample points",
+        "regions": regions_out,
     })
 
 
@@ -321,13 +383,13 @@ def etl_livestock() -> None:
 
 def main() -> None:
     failures = []
-    for step in (etl_effis_weekly, etl_gwis_banf, etl_climate, etl_livestock):
+    for step in (etl_effis_weekly, etl_gwis_banf, etl_climate, etl_climate_regions, etl_livestock):
         try:
             step()
         except Exception as exc:  # noqa: BLE001 - a partial refresh beats none
             failures.append(f"{step.__name__}: {exc}")
             print(f"WARN {step.__name__} failed: {exc}")
-    if len(failures) == 3:
+    if len(failures) >= 4:
         raise SystemExit("all ETL steps failed:\n" + "\n".join(failures))
 
 

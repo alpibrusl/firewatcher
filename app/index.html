@@ -152,6 +152,24 @@
       landscape; the herd's decline is one hypothesis behind worsening fire seasons.
       Source: Eurostat (tgs00045 regional from 2014; apro_mt_ls* national from 2005), thousand head.</p>
     </div>
+    <div id="outlook-block" hidden>
+      <p class="note tight"><strong data-i18n="olTitle">Season outlook (experimental model)</strong></p>
+      <div class="today-stats outlook-stats">
+        <div class="stat">
+          <span class="stat-value" id="ol-range">–</span>
+          <span class="stat-label" data-i18n="olRangeLabel">ha predicted for {year} (80 % range)</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="ol-point">–</span>
+          <span class="stat-label" data-i18n="olPointLabel">central estimate, ha</span>
+        </div>
+      </div>
+      <p id="ol-inputs" class="note tight"></p>
+      <p class="note" data-i18n="olNote">Ridge regression on comunidad-year data (2007 onwards):
+      regional seasonal climate, recent burn history and region effects, validated
+      leave-one-year-out. <span id="ol-quality"></span> Experimental — wide ranges are honest for
+      fire data; this is context, not an operational forecast.</p>
+    </div>
     <p id="region-fallback" class="note" data-i18n="regionFallback" hidden>Regional statistics are unavailable right now — try again later.</p>
     <p class="note" data-i18n="regionNote">Satellite-mapped burned area (MODIS, ≳30 ha) from the GWIS
     country profiles, aggregated to GADM regions. Figures differ from the
