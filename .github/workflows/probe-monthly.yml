@@ -1,0 +1,49 @@
+name: Probe GWIS monthly burned-area endpoints
+
+on:
+  push:
+    paths:
+      - ".github/workflows/probe-monthly.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Try candidate endpoints
+        run: |
+          try () {
+            url="$1"
+            echo "==== $url"
+            out=$(curl -sS -m 30 -o resp.json -w "%{http_code}" "$url" || echo err)
+            size=$(wc -c < resp.json 2>/dev/null)
+            echo "status: $out size: $size"
+            head -c 700 resp.json; echo; echo
+          }
+          c="https://cprof.effis.emergency.copernicus.eu/api/v3"
+          try "$c/banfweekly?level=ADM1&value=ESP.12_1&year=2025&env=PROD"
+          try "$c/banfweekly?level=ADM0&value=ESP&year=2025&env=PROD"
+          try "$c/banfmonthly?level=ADM1&value=ESP.12_1&year=2025&env=PROD"
+          try "$c/banfseasonal?level=ADM1&value=ESP.12_1&year=2025&env=PROD"
+          try "$c/banf?level=ADM1&value=ESP.12_1&year=2025&frequency=monthly&env=PROD"
+          try "$c/openapi.json"
+          try "$c/docs"
+          echo "==== bundle scan for endpoint names"
+          curl -sS -m 30 "https://gwis.jrc.ec.europa.eu/apps/country.profile/static/js/main.js" -o main.js 2>/dev/null || true
+          ls -la main.js 2>/dev/null || echo "no bundle at guessed path"
+          # find the real bundle from the app page
+          curl -sS -m 30 "https://gwis.jrc.ec.europa.eu/apps/country.profile/" -o page.html || true
+          grep -o 'src="[^"]*\.js"' page.html | head -5 || true
+          for path in $(grep -o 'src="[^"]*\.js"' page.html | sed 's/src="//;s/"//' | head -3); do
+            case "$path" in
+              http*) url="$path";;
+              /*) url="https://gwis.jrc.ec.europa.eu$path";;
+              *) url="https://gwis.jrc.ec.europa.eu/apps/country.profile/$path";;
+            esac
+            echo "--- scanning $url"
+            curl -sS -m 40 "$url" -o bundle.js || continue
+            grep -o 'api/v3/[a-zA-Z_?=&]*' bundle.js | sort -u | head -30
+          done
