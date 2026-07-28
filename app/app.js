@@ -61,6 +61,24 @@ const I18N = {
       "The {year} annual figure isn't consolidated in GWIS yet — see \u201cToday at a glance\u201d for near-real-time season totals.",
     regionNote:
       "Satellite-mapped burned area (MODIS, ≳30 ha) from the GWIS country profiles, aggregated to GADM regions. Figures differ from the national EGIF statistic; this dataset publishes comunidades, not provincias. Selecting a region also zooms the map.",
+    climateTitle: "Climate &amp; fire",
+    climateChipsAria: "Choose a climate variable",
+    cmSpring: "Spring rain",
+    cmPre: "Oct–May rain",
+    cmTmax: "Summer max temp",
+    cmWind: "Summer wind",
+    climateChartAria:
+      "Scatter plot of the chosen climate variable against annual burned area in Spain",
+    climateNote:
+      "Each dot is a year (2005 onwards): the chosen seasonal climate signal against that year's burned area. Climate: ERA5 reanalysis averaged over 15 peninsular points (Open-Meteo). Correlation is not causation — use as context, not prediction.",
+    rLine: "{metric} vs. burned area over {n} years: r = {r} — {desc}.",
+    rNone: "no clear linear relationship",
+    rWeak: "weak",
+    rModerate: "moderate",
+    rStrong: "strong",
+    rDesc: "{strength} tendency — {dir}",
+    rPos: "years with higher values burned more",
+    rNeg: "years with higher values burned less",
     chartTitle: "Burned area per year",
     chartMuted: "Spain · kha",
     chartNote: "Approx. totals per EGIF/MITECO; 2025 provisional (EFFIS).",
@@ -138,6 +156,24 @@ const I18N = {
       "El dato anual de {year} aún no está consolidado en GWIS — consulta «Hoy de un vistazo» para los totales casi en tiempo real de la temporada.",
     regionNote:
       "Superficie quemada cartografiada por satélite (MODIS, ≳30 ha) de los perfiles de país de GWIS, agregada a regiones GADM. Las cifras difieren de la estadística nacional EGIF; esta fuente publica comunidades, no provincias. Al elegir una región, el mapa también hace zoom.",
+    climateTitle: "Clima y fuego",
+    climateChipsAria: "Elige una variable climática",
+    cmSpring: "Lluvia de primavera",
+    cmPre: "Lluvia oct–may",
+    cmTmax: "Temp. máx. verano",
+    cmWind: "Viento de verano",
+    climateChartAria:
+      "Diagrama de dispersión de la variable climática elegida frente a la superficie anual quemada en España",
+    climateNote:
+      "Cada punto es un año (desde 2005): la señal climática estacional elegida frente a la superficie quemada de ese año. Clima: reanálisis ERA5 promediado en 15 puntos peninsulares (Open-Meteo). Correlación no es causalidad — es contexto, no predicción.",
+    rLine: "{metric} frente a superficie quemada en {n} años: r = {r} — {desc}.",
+    rNone: "sin relación lineal clara",
+    rWeak: "débil",
+    rModerate: "moderada",
+    rStrong: "fuerte",
+    rDesc: "tendencia {strength} — {dir}",
+    rPos: "los años con valores más altos quemaron más",
+    rNeg: "los años con valores más altos quemaron menos",
     chartTitle: "Superficie quemada por año",
     chartMuted: "España · kha",
     chartNote: "Totales aproximados según EGIF/MITECO; 2025 provisional (EFFIS).",
@@ -216,6 +252,7 @@ function applyLang() {
     renderRegionStats(regionCache.years, today.getFullYear());
     renderRegionChart(regionCache.years, regionCache.name);
   }
+  if (climateData) renderClimate();
 }
 
 /* ---------- map ---------- */
@@ -401,20 +438,34 @@ function initToday(ctx) {
 // entries with a future mddate are placeholders and must be ignored.
 let seasonCache = null;
 
+async function fetchJSON(url, timeout = 10000) {
+  const resp = await fetch(url, { signal: AbortSignal.timeout(timeout) });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
+}
+
+// Data flow: a scheduled ETL (scripts/etl.py) commits same-origin snapshots
+// under data/, which load fast and survive Copernicus API outages. Each
+// fetcher falls back to the live API when the snapshot is missing or stale.
 async function fetchSeasonStats() {
-  const url =
-    "https://api2.effis.emergency.copernicus.eu/statistics/v2/effis/weekly?country=ESP";
-  try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const stats = sumWeeklyStats(await resp.json());
-    if (stats) {
-      seasonCache = stats;
-      renderSeasonStats(stats);
-      return;
+  const sources = [
+    () => fetchJSON("data/effis-weekly-esp.json", 8000),
+    () =>
+      fetchJSON(
+        "https://api2.effis.emergency.copernicus.eu/statistics/v2/effis/weekly?country=ESP"
+      ),
+  ];
+  for (const source of sources) {
+    try {
+      const stats = sumWeeklyStats(await source());
+      if (stats) {
+        seasonCache = stats;
+        renderSeasonStats(stats);
+        return;
+      }
+    } catch (err) {
+      console.error("EFFIS weekly stats source failed:", err);
     }
-  } catch (err) {
-    console.error("EFFIS weekly stats unavailable:", err);
   }
   document.getElementById("today-fallback").hidden = false;
 }
@@ -666,29 +717,45 @@ async function selectRegion(ctx, gid) {
   const stats = document.getElementById("region-stats");
   const fallback = document.getElementById("region-fallback");
   const year = today.getFullYear();
-  const level = gid === "ESP" ? "ADM0" : "ADM1";
-  const url = `${CPROF_API}/banf?level=${level}&value=${gid}&year=${year}&yearFrom=2006&yearTo=${year}&env=PROD`;
-  try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    const years = (data.banfyear || []).filter(
-      (d) => Number.isFinite(d.year) && Number.isFinite(d.ba_area_ha)
-    );
-    if (!years.length) throw new Error("empty banfyear");
-    regionCache = { years, name: region ? region[1] : "España" };
-    renderRegionStats(years, year);
-    renderRegionChart(years, regionCache.name);
-    stats.hidden = false;
-    fallback.hidden = true;
-  } catch (err) {
-    console.error("regional stats unavailable:", err);
-    regionCache = null;
-    stats.hidden = true;
-    document.getElementById("region-chart").innerHTML = "";
-    fallback.hidden = false;
+  const sources = [
+    async () => {
+      if (banfSnapshot === undefined) {
+        banfSnapshot = await fetchJSON("data/gwis-banf.json", 8000).catch(() => null);
+      }
+      const entry = banfSnapshot && banfSnapshot.series && banfSnapshot.series[gid];
+      if (!entry) throw new Error("gid not in snapshot");
+      return entry.years;
+    },
+    async () => {
+      const level = gid === "ESP" ? "ADM0" : "ADM1";
+      const url = `${CPROF_API}/banf?level=${level}&value=${gid}&year=${year}&yearFrom=2006&yearTo=${year}&env=PROD`;
+      const data = await fetchJSON(url, 15000);
+      return data.banfyear || [];
+    },
+  ];
+  for (const source of sources) {
+    try {
+      const years = (await source()).filter(
+        (d) => Number.isFinite(d.year) && Number.isFinite(d.ba_area_ha)
+      );
+      if (!years.length) throw new Error("empty banfyear");
+      regionCache = { years, name: region ? region[1] : "España" };
+      renderRegionStats(years, year);
+      renderRegionChart(years, regionCache.name);
+      stats.hidden = false;
+      fallback.hidden = true;
+      return;
+    } catch (err) {
+      console.error("regional stats source failed:", err);
+    }
   }
+  regionCache = null;
+  stats.hidden = true;
+  document.getElementById("region-chart").innerHTML = "";
+  fallback.hidden = false;
 }
+
+let banfSnapshot;
 
 // The GWIS annual series consolidates months after the fact, so the running
 // year is often absent or zero long after fires have burnt (the weekly
@@ -737,6 +804,172 @@ function renderRegionChart(allYears, name) {
   });
 }
 
+/* ---------- climate & fire correlation ---------- */
+
+const CLIMATE_METRICS = {
+  spring_precip: { unit: "mm", labelKey: "cmSpring" },
+  presummer_precip: { unit: "mm", labelKey: "cmPre" },
+  summer_tmax: { unit: "°C", labelKey: "cmTmax" },
+  summer_wind: { unit: "km/h", labelKey: "cmWind" },
+};
+
+let climateData = null;
+let climateMetric = "spring_precip";
+
+async function initClimate() {
+  try {
+    const snap = await fetchJSON("data/climate-esp.json", 8000);
+    if (!Array.isArray(snap.years) || !snap.years.length) throw new Error("empty");
+    climateData = snap;
+  } catch (err) {
+    console.error("climate snapshot unavailable:", err);
+    return; // card stays hidden — the feature needs the ETL snapshot
+  }
+  document.getElementById("climate-card").hidden = false;
+  for (const chip of document.querySelectorAll(".climate-chips .chip")) {
+    chip.addEventListener("click", () => {
+      climateMetric = chip.dataset.metric;
+      renderClimate();
+    });
+  }
+  renderClimate();
+}
+
+// Years usable for correlation: climate value present and complete, and a
+// burned-area figure exists for that year in the EGIF/EFFIS record.
+function climatePoints() {
+  const ba = new Map(BURNED_KHA.map(([y, kha]) => [Number(y), kha]));
+  return climateData.years
+    .filter(
+      (row) =>
+        Number.isFinite(row[climateMetric]) &&
+        !row[`${climateMetric}_partial`] &&
+        ba.has(row.year)
+    )
+    .map((row) => ({ year: row.year, x: row[climateMetric], y: ba.get(row.year) }));
+}
+
+function pearson(pts) {
+  const n = pts.length;
+  if (n < 5) return null;
+  const mx = pts.reduce((a, p) => a + p.x, 0) / n;
+  const my = pts.reduce((a, p) => a + p.y, 0) / n;
+  let sxy = 0;
+  let sxx = 0;
+  let syy = 0;
+  for (const p of pts) {
+    sxy += (p.x - mx) * (p.y - my);
+    sxx += (p.x - mx) ** 2;
+    syy += (p.y - my) ** 2;
+  }
+  if (!sxx || !syy) return null;
+  return sxy / Math.sqrt(sxx * syy);
+}
+
+function renderClimate() {
+  for (const chip of document.querySelectorAll(".climate-chips .chip")) {
+    chip.classList.toggle("chip-accent", chip.dataset.metric === climateMetric);
+  }
+  const pts = climatePoints();
+  const host = document.getElementById("climate-chart");
+  const verdict = document.getElementById("climate-verdict");
+  scatterChart(host, pts, CLIMATE_METRICS[climateMetric]);
+
+  const r = pearson(pts);
+  if (r === null) {
+    verdict.textContent = "";
+    return;
+  }
+  const abs = Math.abs(r);
+  let desc;
+  if (abs < 0.25) desc = t("rNone");
+  else {
+    const strength = abs < 0.5 ? t("rWeak") : abs < 0.75 ? t("rModerate") : t("rStrong");
+    desc = t("rDesc", { strength, dir: t(r > 0 ? "rPos" : "rNeg") });
+  }
+  verdict.textContent = t("rLine", {
+    metric: t(CLIMATE_METRICS[climateMetric].labelKey),
+    n: pts.length,
+    r: (Math.round(r * 100) / 100).toLocaleString(t("numLocale")),
+    desc,
+  });
+}
+
+// SVG scatter in the same visual family as barChart: y = burned kha, x = the
+// climate metric; dots get tooltips and keyboard focus.
+function scatterChart(host, pts, metric) {
+  host.innerHTML = "";
+  if (!pts.length) return;
+  const W = 320;
+  const H = 190;
+  const m = { top: 12, right: 10, bottom: 26, left: 34 };
+  const plotW = W - m.left - m.right;
+  const plotH = H - m.top - m.bottom;
+  const xMin = Math.min(...pts.map((p) => p.x));
+  const xMax = Math.max(...pts.map((p) => p.x));
+  const xPad = (xMax - xMin) * 0.07 || 1;
+  const x0 = xMin - xPad;
+  const x1 = xMax + xPad;
+  const yMax = niceCeil(Math.max(...pts.map((p) => p.y)));
+  const x = (v) => m.left + ((v - x0) / (x1 - x0)) * plotW;
+  const y = (v) => m.top + plotH * (1 - v / yMax);
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", t("climateChartAria"));
+  const el = (name, attrs, parent) => {
+    const node = document.createElementNS(svgNS, name);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    (parent || svg).appendChild(node);
+    return node;
+  };
+
+  for (let i = 1; i <= 4; i++) {
+    const v = (yMax / 4) * i;
+    el("line", { class: "grid-line", x1: m.left, x2: W - m.right, y1: y(v), y2: y(v) });
+    const lbl = el("text", { class: "tick-y", x: m.left - 4, y: y(v) + 3, "text-anchor": "end" });
+    lbl.textContent = String(Math.round(v));
+  }
+  el("line", { class: "baseline", x1: m.left, x2: W - m.right, y1: y(0), y2: y(0) });
+  for (let i = 0; i <= 3; i++) {
+    const v = x0 + ((x1 - x0) / 3) * i;
+    const lbl = el("text", {
+      x: x(v), y: H - 12, "text-anchor": i === 0 ? "start" : i === 3 ? "end" : "middle",
+    });
+    lbl.textContent = String(Math.round(v));
+  }
+  const unitLbl = el("text", { class: "tick-y", x: W - m.right, y: H - 2, "text-anchor": "end" });
+  unitLbl.textContent = `${metric.unit} → · kha ↑`;
+
+  const maxY = Math.max(...pts.map((p) => p.y));
+  for (const p of pts) {
+    const dot = el("circle", {
+      class: "dot" + (p.y === maxY ? " dot-peak" : ""),
+      cx: x(p.x), cy: y(p.y), r: 4,
+      tabindex: "0",
+      "aria-label": `${p.year}: ${p.x} ${metric.unit}, ${p.y} kha`,
+    });
+    const html = `<span class="t-title">${p.year}</span><br><span class="t-value">${p.x.toLocaleString(t("numLocale"))} ${metric.unit} · ${p.y.toLocaleString(t("numLocale"))} kha</span>`;
+    dot.addEventListener("mousemove", (e) => showTooltip(html, e.clientX, e.clientY));
+    dot.addEventListener("mouseleave", hideTooltip);
+    dot.addEventListener("focus", () => {
+      const r2 = dot.getBoundingClientRect();
+      showTooltip(html, r2.left + r2.width / 2, r2.top);
+    });
+    dot.addEventListener("blur", hideTooltip);
+    if (p.y === maxY || DIRECT_LABELS.has(String(p.year))) {
+      const lbl = el("text", {
+        class: "direct-label",
+        x: x(p.x), y: y(p.y) - 7, "text-anchor": "middle",
+      });
+      lbl.textContent = String(p.year);
+    }
+  }
+  host.appendChild(svg);
+}
+
 /* ---------- boot ---------- */
 
 let mapCtx = null;
@@ -747,6 +980,7 @@ try {
 }
 initToday(mapCtx);
 initRegions(mapCtx);
+initClimate();
 applyLang();
 
 document.getElementById("lang-toggle").addEventListener("click", () => {
