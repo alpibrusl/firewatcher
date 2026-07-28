@@ -68,6 +68,7 @@ const I18N = {
     olInputsFull: "Inputs: complete {year} seasonal climate.",
     olQuality: "Quality: leave-one-year-out R² = {r2} on the log scale; typical error ×{factor}.",
     olMonthLabel: "ha predicted for {month} (80 % range; monthly model with lags, summer R² = {r2})",
+    olMonthLabelGbm: "ha predicted for {month} (80 % range; gradient boosting with lags, summer R² = {r2})",
     olNote:
       'Ridge regression on comunidad-year data (2007 onwards): regional seasonal climate, recent burn history and region effects, validated leave-one-year-out. <span id="ol-quality"></span> Experimental — wide ranges are honest for fire data; this is context, not an operational forecast.',
     lsTitle: "Sheep &amp; goat herd",
@@ -178,6 +179,7 @@ const I18N = {
     olInputsFull: "Entradas: clima estacional completo de {year}.",
     olQuality: "Calidad: R² = {r2} en escala logarítmica con validación dejando fuera cada año; error típico ×{factor}.",
     olMonthLabel: "ha previstas para {month} (rango 80 %; modelo mensual con lags, R² de verano = {r2})",
+    olMonthLabelGbm: "ha previstas para {month} (rango 80 %; gradient boosting con lags, R² de verano = {r2})",
     olNote:
       'Regresión ridge sobre datos comunidad-año (desde 2007): clima estacional regional, historial reciente de incendios y efectos regionales, validada dejando fuera un año cada vez. <span id="ol-quality"></span> Experimental — los rangos anchos son lo honesto con datos de incendios; es contexto, no una predicción operativa.',
     lsTitle: "Cabaña ovina y caprina",
@@ -972,8 +974,23 @@ async function renderOutlook(gid) {
 }
 
 let monthlyModel;
+let monthlyGbm;
 let monthlyClimate;
 let monthlyBa;
+
+// Evaluate a scikit-learn GradientBoostingRegressor export: each tree stores
+// feature/threshold/children/value arrays; -2 in `f` marks a leaf.
+function gbmPredict(model, feats) {
+  let z = model.base;
+  for (const tree of model.trees) {
+    let node = 0;
+    while (tree.f[node] !== -2) {
+      node = feats[tree.f[node]] <= tree.t[node] ? tree.l[node] : tree.r[node];
+    }
+    z += model.learning_rate * tree.v[node];
+  }
+  return z;
+}
 
 function backMonth(y, m, k) {
   let mm = m - k;
@@ -990,8 +1007,9 @@ function backMonth(y, m, k) {
 async function renderOutlookMonth(gid) {
   const stat = document.getElementById("ol-month-stat");
   if (monthlyModel === undefined) {
-    [monthlyModel, monthlyClimate, monthlyBa] = await Promise.all([
+    [monthlyModel, monthlyGbm, monthlyClimate, monthlyBa] = await Promise.all([
       fetchJSON("data/model-monthly-esp.json", 8000).catch(() => null),
+      fetchJSON("data/model-monthly-gbm-esp.json", 12000).catch(() => null),
       fetchJSON("data/climate-monthly-esp.json", 8000).catch(() => null),
       fetchJSON("data/gwis-monthly-esp.json", 8000).catch(() => null),
     ]);
@@ -1026,19 +1044,32 @@ async function renderOutlookMonth(gid) {
     Math.log1p(baAt.get(backMonth(y, mo, 12).join("-")) || 0),
     Math.log1p(ba12),
   ];
-  let z = mm.intercept + mm.coef_month[mo - 1] + mm.coef_region[mm.regions.indexOf(gid)];
-  mm.numeric_features.forEach((k, i) => {
-    z += mm.coef_numeric[i] * ((feats[i] - mm.mean[i]) / mm.std[i]);
-  });
+  // The gradient-boosting challenger is published only when it beat the
+  // ridge model out-of-year, so prefer it when present.
+  const gbm = monthlyGbm && monthlyGbm.regions.includes(gid) ? monthlyGbm : null;
+  const active = gbm || mm;
+  let z;
+  if (gbm) {
+    const gfeats = feats.concat(
+      [mo],
+      gbm.regions.map((g) => (g === gid ? 1 : 0))
+    );
+    z = gbmPredict(gbm, gfeats);
+  } else {
+    z = mm.intercept + mm.coef_month[mo - 1] + mm.coef_region[mm.regions.indexOf(gid)];
+    mm.numeric_features.forEach((k, i) => {
+      z += mm.coef_numeric[i] * ((feats[i] - mm.mean[i]) / mm.std[i]);
+    });
+  }
   const monthName = new Date(y, mo - 1, 15).toLocaleDateString(t("dateLocale"), {
     month: "long",
   });
   stat.hidden = false;
   document.getElementById("ol-mrange").textContent =
-    `${fmtNum(Math.max(0, Math.expm1(z + mm.resid_q10)))} – ${fmtNum(Math.expm1(z + mm.resid_q90))}`;
-  document.getElementById("ol-mlabel").textContent = t("olMonthLabel", {
+    `${fmtNum(Math.max(0, Math.expm1(z + active.resid_q10)))} – ${fmtNum(Math.expm1(z + active.resid_q90))}`;
+  document.getElementById("ol-mlabel").textContent = t(gbm ? "olMonthLabelGbm" : "olMonthLabel", {
     month: monthName,
-    r2: mm.cv_r2_log_summer.toLocaleString(t("numLocale")),
+    r2: active.cv_r2_log_summer.toLocaleString(t("numLocale")),
   });
 }
 
