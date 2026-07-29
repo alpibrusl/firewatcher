@@ -44,8 +44,8 @@ jobs:
           fi
       - name: Commit and push if changed
         run: |
-          git config user.name "firewatcher-etl"
-          git config user.email "noreply@github.com"
+          git config user.name "Claude"
+          git config user.email "noreply@anthropic.com"
           git add app/data
           if git diff --cached --quiet; then
             echo "no data changes"
