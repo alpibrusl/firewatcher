@@ -15,6 +15,7 @@ const I18N = {
   en: {
     title: "Firewatcher — Spain Wildfire Risk Dashboard",
     mapAria: "Map with live wildfire layers",
+    tilesLoading: "Loading fire layers… (EFFIS renders on demand; slow at peak times)",
     brandSub: "Spain wildfire dashboard",
     hidePanel: "Hide panel",
     showPanel: "Show panel",
@@ -124,6 +125,7 @@ const I18N = {
   es: {
     title: "Firewatcher — Panel de riesgo de incendios de España",
     mapAria: "Mapa con capas de incendios en directo",
+    tilesLoading: "Cargando capas de incendios… (EFFIS renderiza bajo demanda; lento en horas punta)",
     brandSub: "Panel de incendios forestales de España",
     hidePanel: "Ocultar panel",
     showPanel: "Mostrar panel",
@@ -370,6 +372,57 @@ function syncDetectionLayer() {
   }
   if (!map.hasLayer(detectionLayer)) detectionLayer.addTo(map);
 }
+
+// The EFFIS server intermittently 500s or times out under load; Leaflet
+// never retries a failed tile, which leaves permanent holes. Re-request
+// failed tiles a couple of times with backoff (cache-busted so the browser
+// doesn't replay the failed response).
+function retryFailedTiles(layer, maxRetries = 3) {
+  layer.on("tileerror", (e) => {
+    const img = e.tile;
+    const tries = (img._retries || 0) + 1;
+    if (tries > maxRetries || !map.hasLayer(layer)) return;
+    img._retries = tries;
+    setTimeout(() => {
+      if (!map.hasLayer(layer)) return;
+      const sep = layer.getTileUrl(e.coords).includes("?") ? "&" : "?";
+      img.src = layer.getTileUrl(e.coords) + `${sep}retry=${tries}`;
+    }, 3000 * tries);
+  });
+}
+
+// Slow EFFIS renders read as "broken" without feedback: show a small pill
+// while any fire-layer tile is actually in flight (counting tiles is
+// reliable; the layer-level loading/load pair is not with updateWhenIdle).
+function trackTileLoading(layers) {
+  const pill = document.getElementById("tiles-loading");
+  const counts = new Map(layers.map((l) => [l, 0]));
+  const sync = () => {
+    let total = 0;
+    for (const v of counts.values()) total += v;
+    pill.hidden = total <= 0;
+  };
+  for (const layer of layers) {
+    layer.on("tileloadstart", () => {
+      counts.set(layer, counts.get(layer) + 1);
+      sync();
+    });
+    const dec = () => {
+      counts.set(layer, Math.max(0, counts.get(layer) - 1));
+      sync();
+    };
+    layer.on("tileload", dec);
+    layer.on("tileerror", dec);
+    layer.on("remove", () => {
+      counts.set(layer, 0);
+      sync();
+    });
+  }
+}
+
+retryFailedTiles(fwiLayer);
+retryFailedTiles(detectionLayer);
+trackTileLoading([fwiLayer, detectionLayer]);
 
 fwiLayer.addTo(map);
 detectionLayer.addTo(map);
