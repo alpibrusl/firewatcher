@@ -1,0 +1,44 @@
+name: Probe EFFIS cached tile endpoints
+
+on:
+  push:
+    paths:
+      - ".github/workflows/probe-wmts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Look for WMTS / tile-cache services
+        run: |
+          try () {
+            url="$1"
+            echo "==== $url"
+            out=$(curl -sS -m 25 -o resp.bin -w "%{http_code} %{content_type} %{time_total}s" "$url" || echo err)
+            echo "-> $out size=$(wc -c < resp.bin 2>/dev/null)"
+            head -c 300 resp.bin | tr -d '\0'; echo; echo
+          }
+          m="https://maps.effis.emergency.copernicus.eu"
+          try "$m/gwc/service/wmts?REQUEST=GetCapabilities"
+          try "$m/effis/gwc/service/wmts?REQUEST=GetCapabilities"
+          try "$m/effis?SERVICE=WMTS&REQUEST=GetCapabilities"
+          try "$m/mapserv/wmts?REQUEST=GetCapabilities"
+          try "https://tiles.effis.emergency.copernicus.eu/"
+          # the EFFIS current-situation viewer's own tile source
+          curl -sS -m 25 "https://forest-fire.emergency.copernicus.eu/apps/effis_current_situation/" -o page.html || true
+          grep -o 'src="[^"]*\.js"' page.html | head -6
+          for path in $(grep -o 'src="[^"]*\.js"' page.html | sed 's/src="//;s/"//' | head -4); do
+            case "$path" in
+              http*) url="$path";;
+              /*) url="https://forest-fire.emergency.copernicus.eu$path";;
+              *) url="https://forest-fire.emergency.copernicus.eu/apps/effis_current_situation/$path";;
+            esac
+            echo "--- scanning $url"
+            curl -sS -m 40 "$url" -o bundle.js || continue
+            grep -oE 'https?://[a-z0-9.\-]*effis[a-z0-9.\-]*[^"'"'"' ]*' bundle.js | sort -u | head -20
+            grep -oE '(wmts|gwc|tile)[^"'"'"' ]{0,60}' bundle.js | sort -u | head -15
+          done
